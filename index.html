@@ -14,7 +14,8 @@
      It's the Web app URL from the "YEP 2026 Check-in API" Apps Script
      deployment, and ends in /exec
      ============================================================ */
-const API_URL = 'https://script.google.com/macros/s/AKfycbz7UPzaJsbf99OoYcO8jaiSCeBYUlsYIvMNvv3B-KcDgcBo7nsKOsw2kJXkbfERaSdC/exec';</script>
+  const API_URL = 'https://script.google.com/macros/s/AKfycbz7UPzaJsbf99OoYcO8jaiSCeBYUlsYIvMNvv3B-KcDgcBo7nsKOsw2kJXkbfERaSdC/exec';
+</script>
 <style>
   :root {
     --ink: #1E2B2A; --ink-2: #2C3B3A; --page: #EFE8DA; --card: #FBF8F1; --gold: #A9813F; --gold-text: #7A5C28; --gold-soft: #D4B477;
@@ -103,7 +104,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbz7UPzaJsbf99OoYcO8jaiS
   @media (max-width: 640px) { .prow > div:last-child { text-align: left; } }
   .prize { font-family: var(--display); font-weight: 600; font-size: 19px; }
   .badge { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 15px; white-space: nowrap; }
-  .badge.present { background: var(--ok-bg); color: var(--ok); } .badge.reraffle { background: var(--bad-bg); color: var(--bad); } .badge.check { background: var(--warn-bg); color: var(--warn); }
+  .badge.present { background: var(--ok-bg); color: var(--ok); } .badge.reraffle { background: var(--bad-bg); color: var(--bad); } .badge.check { background: var(--warn-bg); color: var(--warn); } .badge.reraffled { background: #E7E1D3; color: var(--ink); }
   .rr { font-size: 15px; color: var(--gold-text); font-weight: 700; margin-top: 2px; }
   .ptools { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
   .ptools input { flex: 1; min-width: 200px; }
@@ -152,6 +153,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbz7UPzaJsbf99OoYcO8jaiS
           <select id="camSel" aria-label="Camera"></select>
           <button class="btn" id="camBtn">Start camera</button>
         </div>
+        <button class="btn ghost" id="displayBtn" style="width:100%;margin-top:10px">Open attendee screen</button>
         <p class="msg bad" id="camMsg" hidden></p>
       </div>
       <div>
@@ -300,6 +302,18 @@ function startBooth() {
   renderRecent(); initCams();
 }
 
+/* ---------- attendee screen (second monitor on this laptop) ---------- */
+const displayChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('yep26-display') : null;
+$('#displayBtn').addEventListener('click', () => {
+  const w = window.open('display.html', 'yep26display', 'popup,width=1280,height=720');
+  if (!w) alert('Your browser blocked the window. Allow pop-ups for this site, then try again.');
+});
+function sendToDisplay(r) {
+  if (!displayChannel || !r) return;
+  // Only what's safe to show the queue. No "not attending" wording on the public screen.
+  displayChannel.postMessage({ outcome: r.outcome, name: r.name || '', kind: r.kind || '', lob: r.lobOrCompany || '', t: Date.now() });
+}
+
 /* ---------- result card ---------- */
 function showResult(r, retryValue) {
   const box = $('#result');
@@ -326,6 +340,7 @@ function showResult(r, retryValue) {
     '</div></div>';
   if (retryValue) $('#retryBtn').addEventListener('click', () => doCheckin(retryValue));
   beep(k[0]);
+  if (r.outcome !== 'error') sendToDisplay(r);
 }
 
 /* ---------- check-in ---------- */
@@ -461,7 +476,7 @@ async function loadPrizes() {
 function drawPrizes() {
   if (!prizeData) return;
   const q = $('#pq').value.trim().toLowerCase();
-  const label = { present: ['present', '✓ Present: give the prize'], reraffle: ['reraffle', '✕ Re-raffle'], check: ['check', '! Check winner'] };
+  const label = { present: ['present', '✓ Present: give the prize'], reraffle: ['reraffle', '✕ Re-raffle'], check: ['check', '! Check winner'], reraffled: ['reraffled', '↻ Re-raffled'] };
   const rows = list => {
     const f = list.filter(p => !q || [p.prize, p.winner, p.name, p.ref].join(' ').toLowerCase().indexOf(q) > -1);
     if (!f.length) return '<p class="muted">' + (list.length ? 'No matches.' : 'No prizes listed yet.') + '</p>';

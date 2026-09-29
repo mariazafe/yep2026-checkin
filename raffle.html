@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YEP 2026 raffle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+  /* PASTE THE SAME CHECK-IN API URL YOU USED IN index.html */
+  const API_URL = 'https://script.google.com/macros/s/AKfycbz7UPzaJsbf99OoYcO8jaiSCeBYUlsYIvMNvv3B-KcDgcBo7nsKOsw2kJXkbfERaSdC/exec';
+</script>
+<style>
+  :root { --ink: #1E2B2A; --cream: #F3E9D2; --gold: #A9813F; --gold-soft: #D4B477; --orange: #FF6B00; --muted: #9AA5A2; --card: #FBF8F1; --bad: #F2A897; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background-color: var(--ink);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='none' stroke='%23A9813F' stroke-opacity='.18' stroke-width='1.4'%3E%3Cpath d='M36 6L66 36L36 66L6 36Z'/%3E%3Cpath d='M36 20L52 36L36 52L20 36Z'/%3E%3C/g%3E%3C/svg%3E");
+    color: var(--cream); font: 18px/1.5 'Karla', 'Segoe UI', Arial, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  [hidden] { display: none !important; }
+  button, input, select { font: inherit; }
+  :focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+
+  /* stage */
+  .stage { flex: 1; display: grid; place-items: center; text-align: center; padding: 4vh 4vw 2vh; position: relative; }
+  .kicker { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 500; color: var(--gold-soft); font-size: clamp(22px, 2.6vw, 40px); margin: 0; }
+  .prize { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: clamp(36px, 5.2vw, 88px); line-height: 1.05; margin: 1vh 0 0; }
+  .poolnote { color: var(--muted); font-size: clamp(16px, 1.4vw, 22px); margin-top: 1vh; }
+  .reel {
+    --h: clamp(80px, 11vw, 170px);
+    height: var(--h); overflow: hidden; margin: 5vh auto 0; width: min(92vw, 1300px); position: relative;
+    border-top: 2px solid var(--gold); border-bottom: 2px solid var(--gold);
+    -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+            mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+  }
+  .strip { will-change: transform; }
+  .strip div { height: var(--h); line-height: var(--h); font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: calc(var(--h) * .52); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+  .winner-meta { font-size: clamp(20px, 2.2vw, 34px); color: var(--gold-soft); margin-top: 3vh; min-height: 1.6em; }
+  .idle-title { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: clamp(44px, 7vw, 120px); margin: 0; line-height: 1.02; }
+  canvas#confetti { position: fixed; inset: 0; pointer-events: none; }
+
+  /* controls */
+  .controls { background: rgba(10, 16, 15, .78); border-top: 1px solid #3A4A48; padding: 14px 18px calc(14px + env(safe-area-inset-bottom)); }
+  .crow { max-width: 1300px; margin: 0 auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .seg { display: flex; border: 1px solid #5E6D6B; border-radius: 999px; overflow: hidden; }
+  .seg button { background: transparent; color: var(--cream); border: 0; padding: 10px 16px; min-height: 48px; cursor: pointer; }
+  .seg button[aria-pressed=true] { background: var(--cream); color: var(--ink); font-weight: 700; }
+  .seg small { opacity: .75; margin-left: 4px; }
+  .controls input, .controls select { flex: 1; min-width: 220px; min-height: 48px; padding: 8px 14px; border-radius: 10px; border: 1px solid #5E6D6B; background: #0F1716; color: var(--cream); }
+  .btn { min-height: 48px; padding: 10px 24px; border-radius: 999px; border: 0; background: var(--orange); color: var(--ink); font-weight: 700; cursor: pointer; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--cream); border: 1px solid #5E6D6B; font-weight: 500; }
+  .btn.ok { background: #7CC49A; }
+  .msg { color: var(--bad); font-weight: 700; margin: 8px auto 0; max-width: 1300px; min-height: 0; }
+  .msg:empty { display: none; }
+  body.present .controls { opacity: .08; transition: opacity .3s; }
+  body.present .controls:hover, body.present .controls:focus-within { opacity: 1; }
+
+  /* gate */
+  .gate { max-width: 420px; margin: 12vh auto; background: var(--card); color: var(--ink); border-radius: 14px; padding: 22px; }
+  .gate h2 { font-family: 'Fraunces', Georgia, serif; margin: 0 0 12px; }
+  .gate input { width: 100%; min-height: 50px; font-size: 18px; padding: 8px 12px; border: 1px solid #CBBFA6; border-radius: 10px; margin: 6px 0 12px; }
+  .gate .btn { width: 100%; }
+  .gate .msg { color: #A3301B; }
+  @media (prefers-reduced-motion: reduce) { .strip { transition-duration: .01s !important; } }
+</style>
+</head>
+<body>
+
+<section class="gate" id="gate" hidden>
+  <h2>Unlock the raffle</h2>
+  <label for="pin"><b>Booth PIN</b></label>
+  <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+  <label for="booth"><b>Name for this screen</b></label>
+  <input id="booth" type="text" value="Stage" maxlength="40">
+  <p class="msg" id="gateMsg"></p>
+  <button class="btn" id="unlockBtn">Unlock</button>
+</section>
+
+<main class="stage" id="stage" hidden>
+  <div>
+    <div id="idleView">
+      <p class="kicker">Year End Party 2026</p>
+      <h1 class="idle-title">Raffle time</h1>
+      <p class="poolnote" id="idleNote"></p>
+    </div>
+    <div id="drawView" hidden>
+      <p class="kicker" id="rouletteName"></p>
+      <h2 class="prize" id="prizeName"></h2>
+      <p class="poolnote" id="poolNote"></p>
+      <div class="reel" aria-live="polite"><div class="strip" id="strip"></div></div>
+      <div class="winner-meta" id="winnerMeta"></div>
+    </div>
+  </div>
+</main>
+<canvas id="confetti" hidden></canvas>
+
+<section class="controls" id="controls" hidden>
+  <div class="crow">
+    <div class="seg" role="group" aria-label="Roulette">
+      <button type="button" data-r="all" aria-pressed="true">All attendees<small id="n-all"></small></button>
+      <button type="button" data-r="conso" aria-pressed="false">Conso winners<small id="n-conso"></small></button>
+      <button type="button" data-r="reraffle" aria-pressed="false">Re-raffle<small id="n-reraffle"></small></button>
+    </div>
+    <input id="prizeInput" type="text" placeholder="Prize being drawn, e.g. Cash ₱5,000" maxlength="120" aria-label="Prize">
+    <select id="prizeSelect" hidden aria-label="Prize to re-raffle"></select>
+    <button class="btn" id="drawBtn">Draw</button>
+    <span id="afterBtns" hidden style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn ok" id="claimBtn">Winner is here</button>
+      <button class="btn ghost" id="absentBtn">Not here, draw again</button>
+      <button class="btn ghost" id="voidBtn">Cancel draw</button>
+    </span>
+    <button class="btn ghost" id="presentBtn" title="Fades the controls. Press F11 for full screen.">Presenter mode</button>
+  </div>
+  <p class="msg" id="msg" role="alert"></p>
+</section>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const store = {
+  get: k => { try { return localStorage.getItem('yep26_' + k); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem('yep26_' + k, v); } catch (e) {} },
+  del: k => { try { localStorage.removeItem('yep26_' + k); } catch (e) {} }
+};
+let device = store.get('device');
+if (!device) { device = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('device', device); }
+const NAMES = { all: 'All attendees', conso: 'Consolation winners', reraffle: 'Re-raffle' };
+let roulette = 'all', info = null, current = null, spinning = false;
+
+async function api(action, data) {
+  if (!API_URL || API_URL.indexOf('PASTE_') === 0) throw new Error('The API link hasn\'t been added to this page yet.');
+  const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action: action, token: store.get('token') }, data || {})) });
+  if (!res.ok) throw new Error('Network error ' + res.status);
+  const j = await res.json();
+  if (!j.ok && j.code === 'session') { store.del('token'); showGate(); throw new Error(j.msg); }
+  return j;
+}
+const say = t => { $('#msg').textContent = t || ''; };
+
+/* ---------- unlock ---------- */
+function showGate() { $('#gate').hidden = false; $('#stage').hidden = $('#controls').hidden = true; }
+function showApp() { $('#gate').hidden = true; $('#stage').hidden = $('#controls').hidden = false; refresh(); }
+$('#unlockBtn').addEventListener('click', async () => {
+  $('#gateMsg').textContent = '';
+  try {
+    const r = await api('unlock', { pin: $('#pin').value.trim(), booth: $('#booth').value.trim() || 'Stage', device: device });
+    if (r.ok) { store.set('token', r.token); store.set('booth', r.booth); $('#pin').value = ''; showApp(); }
+    else $('#gateMsg').textContent = r.code === 'blocked' ? 'Too many wrong PINs. Try again in ' + Math.ceil(r.retryIn / 60) + ' minutes.' : r.msg;
+  } catch (e) { $('#gateMsg').textContent = e.message; }
+});
+$('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlockBtn').click(); });
+
+/* ---------- pools ---------- */
+async function refresh() {
+  try {
+    const r = await api('pools');
+    if (!r.ok) return say(r.msg);
+    info = r;
+    ['all', 'conso', 'reraffle'].forEach(k => { $('#n-' + k).textContent = ' (' + r.counts[k] + ')'; });
+    $('#prizeSelect').innerHTML = r.rerafflePrizes.length
+      ? r.rerafflePrizes.map(p => '<option value="' + p.tab + '|' + p.row + '">' + esc(p.label) + '</option>').join('')
+      : '<option value="">No prizes need a re-raffle right now</option>';
+    $('#idleNote').textContent = r.counts.all + ' checked-in attendees in the draw.';
+    syncControls();
+  } catch (e) { say(e.message); }
+}
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function syncControls() {
+  $$('.seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.r === roulette ? 'true' : 'false'));
+  $('#prizeInput').hidden = roulette === 'reraffle';
+  $('#prizeSelect').hidden = roulette !== 'reraffle';
+  const pending = !!current;
+  $('#afterBtns').hidden = !pending;
+  $('#drawBtn').hidden = pending;
+  $$('.seg button').forEach(b => b.disabled = pending || spinning);
+  $('#drawBtn').disabled = spinning;
+}
+$$('.seg button').forEach(b => b.addEventListener('click', () => { roulette = b.dataset.r; say(''); syncControls(); }));
+
+/* ---------- draw ---------- */
+$('#drawBtn').addEventListener('click', draw);
+async function draw() {
+  say('');
+  const body = { roulette: roulette };
+  if (roulette === 'reraffle') {
+    const v = $('#prizeSelect').value;
+    if (!v) return say('No prizes need a re-raffle right now.');
+    body.prizeTab = v.split('|')[0]; body.prizeRow = Number(v.split('|')[1]);
+  } else {
+    body.prize = $('#prizeInput').value.trim();
+    if (!body.prize) { $('#prizeInput').focus(); return say('Type the prize being drawn first.'); }
+  }
+  spinning = true; syncControls();
+  try {
+    const r = await api('draw', body);
+    if (!r.ok) { spinning = false; syncControls(); return say(r.msg); }
+    current = r;
+    await spin(r);
+  } catch (e) { say(e.message); }
+  spinning = false; syncControls();
+}
+
+function spin(r) {
+  $('#idleView').hidden = true; $('#drawView').hidden = false;
+  $('#rouletteName').textContent = NAMES[r.roulette];
+  $('#prizeName').textContent = r.prize;
+  $('#poolNote').textContent = 'Drawing from ' + r.poolSize + (r.poolSize === 1 ? ' person' : ' people');
+  $('#winnerMeta').textContent = '';
+  const strip = $('#strip');
+  let names = r.names.length ? r.names.slice() : [r.winner.name];
+  while (names.length < 40) names = names.concat(r.names.length ? r.names : [r.winner.name]);
+  names = names.slice(0, 44).filter(n => n !== r.winner.name).concat([r.winner.name]);
+  strip.innerHTML = names.map(n => '<div>' + esc(n) + '</div>').join('');
+  strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
+  void strip.offsetHeight;
+  const h = strip.firstElementChild.getBoundingClientRect().height;
+  return new Promise(done => {
+    requestAnimationFrame(() => {
+      strip.style.transition = 'transform 6s cubic-bezier(.12,.72,.12,1)';
+      strip.style.transform = 'translateY(' + (-(names.length - 1) * h) + 'px)';
+    });
+    const finish = () => {
+      $('#winnerMeta').textContent = [r.winner.ref, r.winner.lob].filter(Boolean).join(', ');
+      chime(); confetti(); done();
+    };
+    strip.addEventListener('transitionend', finish, { once: true });
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) setTimeout(finish, 50);
+  });
+}
+
+async function resolve(outcome) {
+  if (!current) return;
+  say('');
+  const id = current.drawId;
+  $$('#afterBtns button').forEach(b => b.disabled = true);
+  try {
+    const r = await api('resolveDraw', { drawId: id, outcome: outcome });
+    if (!r.ok) return say(r.msg);
+    current = null;
+    if (outcome === 'Void') { $('#drawView').hidden = true; $('#idleView').hidden = false; }
+    await refresh();
+    if (outcome === 'Absent') draw();
+  } catch (e) { say(e.message); }
+  finally { $$('#afterBtns button').forEach(b => b.disabled = false); syncControls(); }
+}
+$('#claimBtn').addEventListener('click', () => resolve('Claimed'));
+$('#absentBtn').addEventListener('click', () => resolve('Absent'));
+$('#voidBtn').addEventListener('click', () => { if (confirm('Cancel this draw? The person goes back into this roulette.')) resolve('Void'); });
+$('#presentBtn').addEventListener('click', () => {
+  document.body.classList.toggle('present');
+  $('#presentBtn').textContent = document.body.classList.contains('present') ? 'Exit presenter mode' : 'Presenter mode';
+});
+
+/* ---------- effects ---------- */
+let ac;
+function chime() {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    [523, 659, 784, 1047].forEach((f, i) => {
+      const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f;
+      const t = ac.currentTime + i * 0.11;
+      g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.5);
+    });
+  } catch (e) {}
+}
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const c = $('#confetti'), x = c.getContext('2d');
+  c.hidden = false; c.width = innerWidth; c.height = innerHeight;
+  const colors = ['#A9813F', '#D4B477', '#FF6B00', '#F3E9D2', '#7CC49A'];
+  const bits = Array.from({ length: 160 }, () => ({
+    x: innerWidth / 2 + (Math.random() - .5) * 200, y: innerHeight * .45,
+    vx: (Math.random() - .5) * 16, vy: -Math.random() * 16 - 6, r: Math.random() * 6 + 4,
+    c: colors[Math.floor(Math.random() * colors.length)], a: Math.random() * 6
+  }));
+  const start = performance.now();
+  (function frame(now) {
+    x.clearRect(0, 0, c.width, c.height);
+    bits.forEach(b => { b.vy += .45; b.x += b.vx; b.y += b.vy; b.a += .2;
+      x.save(); x.translate(b.x, b.y); x.rotate(b.a); x.fillStyle = b.c; x.fillRect(-b.r / 2, -b.r / 4, b.r, b.r / 2); x.restore(); });
+    if (now - start < 3200) requestAnimationFrame(frame); else { x.clearRect(0, 0, c.width, c.height); c.hidden = true; }
+  })(start);
+}
+
+if (store.get('token')) showApp(); else showGate();
+</script>
+</body>
+</html>
