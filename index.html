@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>YEP 2026 check-in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+  /* ============================================================
+     PASTE YOUR CHECK-IN API URL BETWEEN THE QUOTES BELOW.
+     It's the Web app URL from the "YEP 2026 Check-in API" Apps Script
+     deployment, and ends in /exec
+     ============================================================ */
+const API_URL = 'https://script.google.com/macros/s/AKfycbz7UPzaJsbf99OoYcO8jaiSCeBYUlsYIvMNvv3B-KcDgcBo7nsKOsw2kJXkbfERaSdC/exec';</script>
+<style>
+  :root {
+    --ink: #1E2B2A; --ink-2: #2C3B3A; --page: #EFE8DA; --card: #FBF8F1; --gold: #A9813F; --gold-text: #7A5C28; --gold-soft: #D4B477;
+    --line: #DDD3BF; --muted: #5B6664; --orange: #FF6B00;
+    --ok: #2E6B4F; --ok-bg: #E6F1EA; --warn: #8B5A13; --warn-bg: #FBF0DC; --bad: #A3301B; --bad-bg: #F8E4DF;
+    --display: 'Fraunces', Georgia, serif; --body: 'Karla', 'Segoe UI', Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--page); color: var(--ink); font: 16px/1.5 var(--body); min-height: 100vh; }
+  [hidden] { display: none !important; }
+  button { font: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+
+  header {
+    background-color: var(--ink);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cg fill='none' stroke='%23A9813F' stroke-opacity='.45' stroke-width='1.2'%3E%3Cpath d='M24 4L44 24L24 44L4 24Z'/%3E%3Cpath d='M24 13L35 24L24 35L13 24Z'/%3E%3C/g%3E%3Crect x='21' y='21' width='6' height='6' transform='rotate(45 24 24)' fill='%23A9813F' fill-opacity='.45'/%3E%3C/svg%3E");
+    color: #F3E9D2; padding: calc(12px + env(safe-area-inset-top)) 18px 12px;
+  }
+  .hbar { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .hbar h1 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 0; flex: 1; min-width: 180px; }
+  .hbar h1 small { display: block; font-family: var(--body); font-weight: 500; font-size: 14px; color: var(--gold-soft); }
+  .counts { display: flex; gap: 18px; font-size: 15px; }
+  .counts b { font-family: var(--display); font-size: 22px; font-weight: 600; color: #fff; }
+  .tabs { display: flex; gap: 6px; }
+  .tabs button, .hbtn { min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 1px solid #5E6D6B; background: transparent; color: #F3E9D2; }
+  .tabs button[aria-current=page] { background: #F3E9D2; color: var(--ink); border-color: #F3E9D2; font-weight: 700; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 18px 16px 40px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  h2 { font-family: var(--display); font-weight: 600; font-size: 24px; margin: 0 0 10px; }
+  label.f { display: block; font-weight: 700; margin: 14px 0 6px; }
+  input[type=text], input[type=password], input[type=search], select {
+    width: 100%; font: inherit; font-size: 18px; min-height: 52px; padding: 10px 14px; border: 1px solid #CBBFA6; border-radius: 10px; background: #fff; color: var(--ink);
+  }
+  .btn { min-height: 52px; padding: 12px 22px; border: 0; border-radius: 999px; background: var(--orange); color: var(--ink); font-weight: 700; font-size: 17px; }
+  .btn:disabled { background: #E8D9C6; color: var(--muted); cursor: default; }
+  .btn.ghost { background: #fff; border: 1px solid var(--line); font-weight: 500; }
+  .muted { color: var(--muted); }
+  .msg { margin: 12px 0 0; font-weight: 700; }
+  .msg.bad { color: var(--bad); }
+  .note { font-size: 15px; color: var(--muted); margin-top: 16px; }
+
+  /* PIN gate */
+  .gate { max-width: 420px; margin: 8vh auto 0; }
+  .gate .btn { width: 100%; margin-top: 18px; }
+
+  /* Check-in layout */
+  .grid { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  #reader { width: 100%; border-radius: 10px; overflow: hidden; background: #0f1716; min-height: 60px; }
+  #reader video { border-radius: 10px; }
+  .camrow { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .camrow select { flex: 1; min-width: 160px; font-size: 16px; }
+
+  .result { border-radius: 14px; padding: 20px; margin-bottom: 18px; border: 2px solid; display: flex; gap: 16px; align-items: flex-start; }
+  .result .icon { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; font-weight: 700; color: #fff; }
+  .result h3 { font-family: var(--display); font-weight: 600; font-size: 30px; line-height: 1.1; margin: 0 0 6px; }
+  .result .who { font-size: 22px; font-weight: 700; }
+  .result .meta { font-size: 17px; }
+  .result.ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); } .result.ok .icon { background: var(--ok); }
+  .result.warn { background: var(--warn-bg); border-color: #B7791F; color: var(--warn); } .result.warn .icon { background: #B7791F; }
+  .result.bad { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); } .result.bad .icon { background: var(--bad); }
+  .result .who, .result .meta { color: var(--ink); }
+  .result .retry { margin-top: 12px; }
+
+  .searchrow { display: flex; gap: 10px; }
+  .searchrow input { flex: 1; }
+  .list { list-style: none; margin: 12px 0 0; padding: 0; }
+  .list li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 4px; border-top: 1px solid var(--line); min-height: 64px; }
+  .list li:first-child { border-top: 0; }
+  .list .n { font-weight: 700; font-size: 17px; }
+  .list .s { font-size: 15px; color: var(--muted); }
+  .tag { display: inline-block; font-size: 13px; padding: 1px 8px; border-radius: 999px; background: #EFE8DA; color: var(--ink); margin-left: 6px; vertical-align: 2px; }
+  .st-ok { color: var(--ok); font-weight: 700; } .st-bad { color: var(--bad); font-weight: 700; }
+  .list .btn { min-height: 48px; padding: 8px 18px; font-size: 16px; flex: none; }
+  .undo { min-height: 48px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; flex: none; }
+  .undo:disabled { color: var(--muted); background: transparent; border-color: transparent; }
+  h3.sec { font-size: 17px; margin: 22px 0 4px; }
+
+  /* Prizes */
+  .prow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 240px; gap: 14px; align-items: center; padding: 14px 4px; border-top: 1px solid var(--line); }
+  .prow:first-child { border-top: 0; }
+  @media (max-width: 640px) { .prow { grid-template-columns: 1fr; gap: 4px; } }
+  .prow > div:last-child { text-align: right; }
+  @media (max-width: 640px) { .prow > div:last-child { text-align: left; } }
+  .prize { font-family: var(--display); font-weight: 600; font-size: 19px; }
+  .badge { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .badge.present { background: var(--ok-bg); color: var(--ok); } .badge.reraffle { background: var(--bad-bg); color: var(--bad); } .badge.check { background: var(--warn-bg); color: var(--warn); }
+  .rr { font-size: 15px; color: var(--gold-text); font-weight: 700; margin-top: 2px; }
+  .ptools { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .ptools input { flex: 1; min-width: 200px; }
+  .psec { margin-bottom: 18px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hbar">
+    <h1>Year End Party 2026<small id="boothLabel">Check-in booth</small></h1>
+    <div class="counts" id="counts" hidden>
+      <span><b id="cA">0</b> of <span id="cAT">0</span> attendees</span>
+      <span><b id="cG">0</b> guests</span>
+    </div>
+    <nav class="tabs" id="tabs" hidden>
+      <button type="button" data-view="checkin" aria-current="page">Check-in</button>
+      <button type="button" data-view="prizes">Prizes</button>
+    </nav>
+    <button class="hbtn" id="lockBtn" hidden>Lock booth</button>
+  </div>
+</header>
+
+<main>
+  <!-- PIN gate -->
+  <section id="v-pin" class="gate" hidden>
+    <div class="card">
+      <h2>Unlock the booth</h2>
+      <label class="f" for="pin">Booth PIN</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+      <label class="f" for="booth">Booth name</label>
+      <input id="booth" type="text" maxlength="40" placeholder="e.g. Booth 1, Stage">
+      <p class="msg bad" id="pinMsg" role="alert" hidden></p>
+      <button class="btn" id="unlockBtn">Unlock</button>
+      <p class="note">Needs internet. If check-in stops working, switch to mobile data.</p>
+    </div>
+  </section>
+
+  <!-- Check-in -->
+  <section id="v-checkin" hidden>
+    <div class="grid">
+      <div class="card">
+        <h2>Scan a ticket</h2>
+        <div id="reader"></div>
+        <div class="camrow">
+          <select id="camSel" aria-label="Camera"></select>
+          <button class="btn" id="camBtn">Start camera</button>
+        </div>
+        <p class="msg bad" id="camMsg" hidden></p>
+      </div>
+      <div>
+        <div id="result" aria-live="assertive"></div>
+        <div class="card">
+          <h2>Find someone</h2>
+          <div class="searchrow">
+            <input id="q" type="search" placeholder="Registration number, email or name" autocomplete="off" aria-label="Search">
+          </div>
+          <ul class="list" id="results"></ul>
+          <h3 class="sec">Recent check-ins on this device</h3>
+          <ul class="list" id="recent"><li class="muted">None yet.</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Prizes -->
+  <section id="v-prizes" hidden>
+    <div class="ptools">
+      <input id="pq" type="search" placeholder="Search prize or winner" aria-label="Search prizes">
+      <button class="btn ghost" id="pRefresh">Refresh</button>
+    </div>
+    <p class="muted" id="pMeta"></p>
+    <div class="card psec"><h2>Grand prizes</h2><div id="pGrand"></div></div>
+    <div class="card psec"><h2>Consolation prizes</h2><div id="pCons"></div></div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get: k => { try { return localStorage.getItem('yep26_' + k); } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem('yep26_' + k, v); } catch (e) {} },
+  del: k => { try { localStorage.removeItem('yep26_' + k); } catch (e) {} }
+};
+let device = store.get('device');
+if (!device) { device = Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('device', device); }
+
+/* ---------- API ---------- */
+async function api(action, data) {
+  if (!API_URL || API_URL.indexOf('PASTE_') === 0) throw new Error('The API link hasn\'t been added to this page yet.');
+  const body = Object.assign({ action: action, token: store.get('token') }, data || {});
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
+  if (!res.ok) throw new Error('Network error ' + res.status);
+  const j = await res.json();
+  if (!j.ok && j.code === 'session') { lockLocal(); throw new Error(j.msg); }
+  return j;
+}
+
+/* ---------- feedback ---------- */
+let audio;
+function beep(kind) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const tones = kind === 'ok' ? [880, 1320] : kind === 'warn' ? [660] : [220, 180];
+    tones.forEach((f, i) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = f; o.type = kind === 'bad' ? 'square' : 'sine';
+      g.gain.setValueAtTime(0.18, audio.currentTime + i * 0.13);
+      g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + i * 0.13 + 0.12);
+      o.connect(g); g.connect(audio.destination);
+      o.start(audio.currentTime + i * 0.13); o.stop(audio.currentTime + i * 0.13 + 0.13);
+    });
+  } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate(kind === 'ok' ? 80 : [120, 80, 120]);
+}
+
+/* ---------- views ---------- */
+function view(name) {
+  ['pin', 'checkin', 'prizes'].forEach(v => $('#v-' + v).hidden = v !== name);
+  const unlocked = name !== 'pin';
+  $('#tabs').hidden = $('#lockBtn').hidden = $('#counts').hidden = !unlocked;
+  $$('#tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.view === name ? 'page' : 'false'));
+  if (name === 'prizes') loadPrizes();
+  if (name !== 'checkin') stopCam();
+}
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b) view(b.dataset.view); });
+
+/* ---------- PIN gate ---------- */
+let blockTimer;
+function lockLocal() {
+  store.del('token'); stopCam(); view('pin');
+  $('#boothLabel').textContent = 'Check-in booth';
+}
+function countdown(sec) {
+  clearInterval(blockTimer);
+  const btn = $('#unlockBtn'), m = $('#pinMsg');
+  btn.disabled = true; m.hidden = false;
+  const tick = () => {
+    if (sec <= 0) { clearInterval(blockTimer); btn.disabled = false; m.hidden = true; return; }
+    m.textContent = 'Too many wrong PINs. Try again in ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + '.';
+    sec--;
+  };
+  tick(); blockTimer = setInterval(tick, 1000);
+}
+$('#booth').value = store.get('booth') || '';
+$('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlockBtn').click(); });
+$('#booth').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlockBtn').click(); });
+$('#unlockBtn').addEventListener('click', async () => {
+  const m = $('#pinMsg'); m.hidden = true;
+  const pin = $('#pin').value.trim(), booth = $('#booth').value.trim();
+  if (!pin || !booth) { m.textContent = 'Enter the PIN and a booth name.'; m.hidden = false; return; }
+  const btn = $('#unlockBtn'); btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const r = await api('unlock', { pin: pin, booth: booth, device: device });
+    btn.textContent = 'Unlock';
+    if (r.ok) {
+      store.set('token', r.token); store.set('booth', r.booth); $('#pin').value = '';
+      btn.disabled = false; startBooth();
+    } else if (r.code === 'blocked') {
+      countdown(r.retryIn);
+    } else {
+      btn.disabled = false;
+      m.textContent = r.msg + (r.attemptsLeft ? ' ' + r.attemptsLeft + (r.attemptsLeft === 1 ? ' try' : ' tries') + ' left before a 5-minute wait.' : '');
+      m.hidden = false;
+    }
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Unlock';
+    m.textContent = e.message; m.hidden = false;
+  }
+});
+$('#lockBtn').addEventListener('click', async () => {
+  if (!confirm('Lock this booth? You\'ll need the PIN to unlock it again.')) return;
+  try { await api('lock'); } catch (e) {}
+  lockLocal();
+});
+
+/* ---------- counters ---------- */
+let statsTimer;
+async function refreshStats() {
+  try {
+    const s = await api('stats');
+    if (!s.ok) return;
+    $('#cA').textContent = s.attendeesCheckedIn; $('#cAT').textContent = s.attendeesExpected;
+    $('#cG').textContent = s.guestsCheckedIn;
+  } catch (e) {}
+}
+
+function startBooth() {
+  $('#boothLabel').textContent = store.get('booth') || 'Check-in booth';
+  view('checkin');
+  refreshStats(); clearInterval(statsTimer); statsTimer = setInterval(refreshStats, 30000);
+  renderRecent(); initCams();
+}
+
+/* ---------- result card ---------- */
+function showResult(r, retryValue) {
+  const box = $('#result');
+  if (!r) { box.innerHTML = ''; return; }
+  const kinds = {
+    checked_in: ['ok', '✓', 'Checked in'],
+    already: ['warn', '!', 'Already checked in'],
+    not_attending: ['bad', '✕', 'Registered as not attending'],
+    not_found: ['bad', '?', 'Not found'],
+    error: ['bad', '!', 'Couldn\'t reach the sheet']
+  };
+  const k = kinds[r.outcome] || kinds.error;
+  let meta = '';
+  if (r.outcome === 'already') meta = 'At ' + esc(r.checkedInAt) + ' by ' + esc(r.checkedInBy) + '.';
+  if (r.outcome === 'not_attending') meta = 'Please see the Engagement Team.';
+  if (r.outcome === 'not_found') meta = 'Try their email or name.' + (r.code ? ' Scanned: ' + esc(r.code) : '');
+  if (r.outcome === 'error') meta = esc(r.msg || 'Check the internet connection.');
+  box.innerHTML = '<div class="result ' + k[0] + '"><div class="icon" aria-hidden="true">' + k[1] + '</div><div>' +
+    '<h3>' + k[2] + '</h3>' +
+    (r.name ? '<div class="who">' + esc(r.name) + (r.kind === 'Guest' ? ' <span class="tag">Guest</span>' : '') + '</div>' +
+      '<div class="meta">' + esc([r.ref, r.lobOrCompany].filter(Boolean).join(', ')) + '</div>' : '') +
+    (meta ? '<div class="meta">' + meta + '</div>' : '') +
+    (retryValue ? '<button class="btn retry" id="retryBtn">Try again: ' + esc(retryValue) + '</button>' : '') +
+    '</div></div>';
+  if (retryValue) $('#retryBtn').addEventListener('click', () => doCheckin(retryValue));
+  beep(k[0]);
+}
+
+/* ---------- check-in ---------- */
+let busy = false;
+async function doCheckin(code) {
+  if (busy) return; busy = true;
+  try {
+    const r = await api('checkin', { code: code });
+    if (!r.ok) { showResult({ outcome: 'error', msg: r.msg }, code); return; }
+    showResult(r);
+    if (r.outcome === 'checked_in') { addRecent(r); refreshStats(); }
+    if ($('#q').value.trim()) runSearch();
+  } catch (e) {
+    showResult({ outcome: 'error', msg: e.message }, code);
+  } finally { busy = false; }
+}
+
+/* ---------- search ---------- */
+let sTimer, sSeq = 0;
+$('#q').addEventListener('input', () => { clearTimeout(sTimer); sTimer = setTimeout(runSearch, 350); });
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(sTimer); runSearch(); } });
+async function runSearch() {
+  const q = $('#q').value.trim(), seq = ++sSeq, ul = $('#results');
+  if (q.length < 2) { ul.innerHTML = ''; return; }
+  ul.innerHTML = '<li class="muted">Searching…</li>';
+  try {
+    const r = await api('search', { q: q });
+    if (seq !== sSeq) return;
+    if (!r.ok) { ul.innerHTML = '<li class="st-bad">' + esc(r.msg) + '</li>'; return; }
+    if (!r.results.length) { ul.innerHTML = '<li class="muted">No one matches "' + esc(q) + '".</li>'; return; }
+    ul.innerHTML = r.results.map(p => {
+      const st = p.status === 'checked_in' ? '<span class="st-ok">Checked in ' + esc(p.checkedInAt) + '</span>'
+        : p.status === 'not_attending' ? '<span class="st-bad">Registered as not attending</span>' : 'Not checked in yet';
+      return '<li><div><div class="n">' + esc(p.name) + '<span class="tag">' + esc(p.kind) + '</span></div>' +
+        '<div class="s">' + esc([p.ref, p.lobOrCompany].filter(Boolean).join(', ')) + '</div><div class="s">' + st + '</div></div>' +
+        (p.status === 'available' ? '<button class="btn" data-ref="' + esc(p.ref) + '">Check in</button>' : '') + '</li>';
+    }).join('');
+  } catch (e) {
+    if (seq === sSeq) ul.innerHTML = '<li class="st-bad">' + esc(e.message) + ' <button class="undo" id="sRetry">Try again</button></li>';
+    const b = $('#sRetry'); if (b) b.addEventListener('click', runSearch);
+  }
+}
+$('#results').addEventListener('click', e => { const b = e.target.closest('button[data-ref]'); if (b) doCheckin(b.dataset.ref); });
+
+/* ---------- recent + undo ---------- */
+function recent() { try { return JSON.parse(store.get('recent') || '[]'); } catch (e) { return []; } }
+function addRecent(r) {
+  const list = recent().filter(x => x.ref !== r.ref);
+  list.unshift({ ref: r.ref, name: r.name, kind: r.kind, at: r.checkedInAt, t: Date.now() });
+  store.set('recent', JSON.stringify(list.slice(0, 15)));
+  renderRecent();
+}
+function renderRecent() {
+  const list = recent(), ul = $('#recent');
+  if (!list.length) { ul.innerHTML = '<li class="muted">None yet.</li>'; return; }
+  ul.innerHTML = list.map(x => {
+    const left = 120 - Math.floor((Date.now() - x.t) / 1000);
+    return '<li><div><div class="n">' + esc(x.name) + (x.kind === 'Guest' ? '<span class="tag">Guest</span>' : '') + '</div><div class="s">' + esc(x.ref + ', ' + x.at) + '</div></div>' +
+      '<button class="undo" data-undo="' + esc(x.ref) + '"' + (left > 0 ? '' : ' disabled') + '>' + (left > 0 ? 'Undo (' + left + 's)' : 'Done') + '</button></li>';
+  }).join('');
+}
+setInterval(() => { if (!$('#v-checkin').hidden) renderRecent(); }, 1000);
+$('#recent').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-undo]');
+  if (!b || b.disabled) return;
+  if (!confirm('Undo the check-in for ' + b.dataset.undo + '?')) return;
+  b.disabled = true; b.textContent = 'Undoing…';
+  try {
+    const r = await api('undo', { ref: b.dataset.undo });
+    if (!r.ok) { alert(r.msg); renderRecent(); return; }
+    store.set('recent', JSON.stringify(recent().filter(x => x.ref !== b.dataset.undo)));
+    renderRecent(); refreshStats(); showResult(null);
+    if ($('#q').value.trim()) runSearch();
+  } catch (err) { alert(err.message); renderRecent(); }
+});
+
+/* ---------- camera ---------- */
+let qr = null, camOn = false, lastCode = '', lastAt = 0;
+async function initCams() {
+  const sel = $('#camSel');
+  if (typeof Html5Qrcode === 'undefined') { $('#camMsg').textContent = 'The camera scanner didn\'t load. Use the search box.'; $('#camMsg').hidden = false; return; }
+  try {
+    const cams = await Html5Qrcode.getCameras();
+    if (!cams.length) throw new Error('No camera found.');
+    const saved = store.get('cam');
+    const back = cams.find(c => /back|rear|environment/i.test(c.label)) || cams[cams.length - 1];
+    sel.innerHTML = cams.map(c => '<option value="' + esc(c.id) + '">' + esc(c.label || 'Camera') + '</option>').join('');
+    sel.value = cams.some(c => c.id === saved) ? saved : back.id;
+  } catch (e) {
+    sel.innerHTML = '<option value="">Allow camera access, then press Start</option>';
+  }
+}
+$('#camSel').addEventListener('change', async () => { store.set('cam', $('#camSel').value); if (camOn) { await stopCam(); startCam(); } });
+$('#camBtn').addEventListener('click', () => camOn ? stopCam() : startCam());
+async function startCam() {
+  $('#camMsg').hidden = true;
+  if (typeof Html5Qrcode === 'undefined') return;
+  try {
+    qr = qr || new Html5Qrcode('reader');
+    const id = $('#camSel').value;
+    await qr.start(id ? { deviceId: { exact: id } } : { facingMode: 'environment' }, { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; } }, onScan);
+    camOn = true; $('#camBtn').textContent = 'Stop camera';
+    if (!$('#camSel').value) initCams();
+  } catch (e) {
+    $('#camMsg').textContent = 'Camera didn\'t start: ' + (e.message || e) + '. Use the search box instead.'; $('#camMsg').hidden = false;
+  }
+}
+async function stopCam() {
+  if (qr && camOn) { try { await qr.stop(); } catch (e) {} }
+  camOn = false; $('#camBtn').textContent = 'Start camera';
+}
+async function onScan(text) {
+  const code = String(text || '').trim().toUpperCase();
+  if (!code || busy) return;
+  if (code === lastCode && Date.now() - lastAt < 5000) return;
+  lastCode = code; lastAt = Date.now();
+  try { qr.pause(true); } catch (e) {}
+  await doCheckin(code);
+  setTimeout(() => { if (camOn) { try { qr.resume(); } catch (e) {} } }, 3000);
+}
+
+/* ---------- prizes ---------- */
+let prizeData = null;
+async function loadPrizes() {
+  $('#pMeta').textContent = 'Loading…';
+  try {
+    const r = await api('prizes');
+    if (!r.ok) { $('#pMeta').textContent = r.msg; return; }
+    prizeData = r; $('#pMeta').textContent = 'Updated ' + r.generatedAt + '.';
+    drawPrizes();
+  } catch (e) { $('#pMeta').textContent = e.message; }
+}
+function drawPrizes() {
+  if (!prizeData) return;
+  const q = $('#pq').value.trim().toLowerCase();
+  const label = { present: ['present', '✓ Present: give the prize'], reraffle: ['reraffle', '✕ Re-raffle'], check: ['check', '! Check winner'] };
+  const rows = list => {
+    const f = list.filter(p => !q || [p.prize, p.winner, p.name, p.ref].join(' ').toLowerCase().indexOf(q) > -1);
+    if (!f.length) return '<p class="muted">' + (list.length ? 'No matches.' : 'No prizes listed yet.') + '</p>';
+    return f.map(p => '<div class="prow"><div class="prize">' + esc(p.prize || 'Prize') + '</div>' +
+      '<div><div class="n" style="font-weight:700;font-size:17px">' + esc(p.name || p.winner || 'No winner entered') + (p.kind === 'Guest' ? '<span class="tag">Guest</span>' : '') + '</div>' +
+      '<div class="s muted" style="font-size:15px">' + esc([p.ref, p.lobOrCompany, p.note, p.checkedInAt ? 'Checked in ' + p.checkedInAt : ''].filter(Boolean).join(', ')) + '</div>' +
+      (p.reraffledTo ? '<div class="rr">Re-raffled to: ' + esc(p.reraffledTo) + '</div>' : '') + '</div>' +
+      '<div><span class="badge ' + label[p.status][0] + '">' + label[p.status][1] + '</span></div></div>').join('');
+  };
+  $('#pGrand').innerHTML = rows(prizeData.grand || []);
+  $('#pCons').innerHTML = rows(prizeData.consolation || []);
+}
+$('#pq').addEventListener('input', drawPrizes);
+$('#pRefresh').addEventListener('click', loadPrizes);
+
+/* ---------- start ---------- */
+if (store.get('token')) startBooth(); else view('pin');
+</script>
+</body>
+</html>
