@@ -95,6 +95,10 @@
   .undo { min-height: 48px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; flex: none; }
   .undo:disabled { color: var(--muted); background: transparent; border-color: transparent; }
   h3.sec { font-size: 17px; margin: 22px 0 4px; }
+  .walkform { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .walkform summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; color: var(--ink); }
+  .btn.walk { background: #fff; border: 1px solid #B7791F; color: var(--warn); }
+  .st-warn { color: var(--warn); font-weight: 700; }
 
   /* Prizes */
   .prow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 240px; gap: 14px; align-items: center; padding: 14px 4px; border-top: 1px solid var(--line); }
@@ -119,6 +123,7 @@
     <div class="counts" id="counts" hidden>
       <span><b id="cA">0</b> of <span id="cAT">0</span> attendees</span>
       <span><b id="cG">0</b> guests</span>
+      <span><b id="cW">0</b> walk-ins</span>
     </div>
     <nav class="tabs" id="tabs" hidden>
       <button type="button" data-view="checkin" aria-current="page">Check-in</button>
@@ -164,6 +169,14 @@
             <input id="q" type="search" placeholder="Registration number, email or name" autocomplete="off" aria-label="Search">
           </div>
           <ul class="list" id="results"></ul>
+          <details class="walkform" id="walkForm">
+            <summary>Not on the list? Record a walk-in by name</summary>
+            <label class="f" for="wName">Full name</label>
+            <input id="wName" type="text" maxlength="120" autocomplete="off">
+            <label class="f" for="wNote">Note <span class="muted">(optional, e.g. "came with Juan")</span></label>
+            <input id="wNote" type="text" maxlength="120" autocomplete="off">
+            <button class="btn" id="wBtn" style="margin-top:12px">Record walk-in</button>
+          </details>
           <h3 class="sec">Recent check-ins on this device</h3>
           <ul class="list" id="recent"><li class="muted">None yet.</li></ul>
         </div>
@@ -292,6 +305,7 @@ async function refreshStats() {
     if (!s.ok) return;
     $('#cA').textContent = s.attendeesCheckedIn; $('#cAT').textContent = s.attendeesExpected;
     $('#cG').textContent = s.guestsCheckedIn;
+    $('#cW').textContent = s.walkIns || 0;
   } catch (e) {}
 }
 
@@ -308,11 +322,14 @@ $('#displayBtn').addEventListener('click', () => {
   const w = window.open('display.html', 'yep26display', 'popup,width=1280,height=720');
   if (!w) alert('Your browser blocked the window. Allow pop-ups for this site, then try again.');
 });
+// The attendee screen pulls the live camera from this window, so people can line up their QR code.
+window.yepGetStream = () => { const v = document.querySelector('#reader video'); return camOn && v ? v.srcObject : null; };
 function sendToDisplay(r) {
   if (!displayChannel || !r) return;
   // Only what's safe to show the queue. No "not attending" wording on the public screen.
-  displayChannel.postMessage({ outcome: r.outcome, name: r.name || '', kind: r.kind || '', lob: r.lobOrCompany || '', t: Date.now() });
+  displayChannel.postMessage({ type: 'result', outcome: r.outcome, name: r.name || '', kind: r.kind || '', lob: r.lobOrCompany || '', t: Date.now() });
 }
+function pingDisplay(type) { if (displayChannel) displayChannel.postMessage({ type: type, t: Date.now() }); }
 
 /* ---------- result card ---------- */
 function showResult(r, retryValue) {
@@ -322,13 +339,18 @@ function showResult(r, retryValue) {
     checked_in: ['ok', '✓', 'Checked in'],
     already: ['warn', '!', 'Already checked in'],
     not_attending: ['bad', '✕', 'Registered as not attending'],
+    unregistered: ['bad', '✕', 'Didn\'t register'],
+    walk_in: ['warn', '!', 'Walk-in recorded'],
+    walked_in: ['warn', '!', 'Already recorded as a walk-in'],
     not_found: ['bad', '?', 'Not found'],
     error: ['bad', '!', 'Couldn\'t reach the sheet']
   };
   const k = kinds[r.outcome] || kinds.error;
   let meta = '';
   if (r.outcome === 'already') meta = 'At ' + esc(r.checkedInAt) + ' by ' + esc(r.checkedInBy) + '.';
-  if (r.outcome === 'not_attending') meta = 'Please see the Engagement Team.';
+  if (r.outcome === 'not_attending' || r.outcome === 'unregistered') meta = 'They can come in as a walk-in: no meals, merch or raffle.';
+  if (r.outcome === 'walk_in') meta = 'Let them in. Not included in meals, merch or the raffle.';
+  if (r.outcome === 'walked_in') meta = 'Recorded at ' + esc(r.checkedInAt) + ' by ' + esc(r.checkedInBy) + '. Not included in meals, merch or the raffle.';
   if (r.outcome === 'not_found') meta = 'Try their email or name.' + (r.code ? ' Scanned: ' + esc(r.code) : '');
   if (r.outcome === 'error') meta = esc(r.msg || 'Check the internet connection.');
   box.innerHTML = '<div class="result ' + k[0] + '"><div class="icon" aria-hidden="true">' + k[1] + '</div><div>' +
@@ -337,8 +359,10 @@ function showResult(r, retryValue) {
       '<div class="meta">' + esc([r.ref, r.lobOrCompany].filter(Boolean).join(', ')) + '</div>' : '') +
     (meta ? '<div class="meta">' + meta + '</div>' : '') +
     (retryValue ? '<button class="btn retry" id="retryBtn">Try again: ' + esc(retryValue) + '</button>' : '') +
+    ((r.outcome === 'not_attending' || r.outcome === 'unregistered') && r.email ? '<button class="btn walk retry" id="walkBtn">Record as walk-in</button>' : '') +
     '</div></div>';
   if (retryValue) $('#retryBtn').addEventListener('click', () => doCheckin(retryValue));
+  if ($('#walkBtn')) $('#walkBtn').addEventListener('click', () => doWalkin({ email: r.email }));
   beep(k[0]);
   if (r.outcome !== 'error') sendToDisplay(r);
 }
@@ -358,6 +382,26 @@ async function doCheckin(code) {
   } finally { busy = false; }
 }
 
+/* ---------- walk-ins ---------- */
+async function doWalkin(data) {
+  if (busy) return; busy = true;
+  try {
+    const r = await api('walkin', data);
+    if (!r.ok) { showResult({ outcome: 'error', msg: r.msg }); return; }
+    showResult(r);
+    if (r.outcome === 'walk_in') { addRecent(Object.assign({ walkinId: r.walkinId, kind: 'Walk-in' }, r)); refreshStats(); }
+    if ($('#q').value.trim()) runSearch();
+  } catch (e) {
+    showResult({ outcome: 'error', msg: e.message });
+  } finally { busy = false; }
+}
+$('#wBtn').addEventListener('click', () => {
+  const name = $('#wName').value.trim();
+  if (name.length < 2) { $('#wName').focus(); return; }
+  if (!confirm('Record ' + name + ' as a walk-in? They won\'t be included in meals, merch or the raffle.')) return;
+  doWalkin({ name: name, note: $('#wNote').value.trim() }).then(() => { $('#wName').value = ''; $('#wNote').value = ''; $('#walkForm').open = false; });
+});
+
 /* ---------- search ---------- */
 let sTimer, sSeq = 0;
 $('#q').addEventListener('input', () => { clearTimeout(sTimer); sTimer = setTimeout(runSearch, 350); });
@@ -370,26 +414,34 @@ async function runSearch() {
     const r = await api('search', { q: q });
     if (seq !== sSeq) return;
     if (!r.ok) { ul.innerHTML = '<li class="st-bad">' + esc(r.msg) + '</li>'; return; }
-    if (!r.results.length) { ul.innerHTML = '<li class="muted">No one matches "' + esc(q) + '".</li>'; return; }
+    if (!r.results.length) { ul.innerHTML = '<li class="muted">No one matches "' + esc(q) + '". If they\'re not on the masterlist, record them as a walk-in by name below.</li>'; $('#walkForm').open = true; $('#wName').value = q; return; }
     ul.innerHTML = r.results.map(p => {
       const st = p.status === 'checked_in' ? '<span class="st-ok">Checked in ' + esc(p.checkedInAt) + '</span>'
-        : p.status === 'not_attending' ? '<span class="st-bad">Registered as not attending</span>' : 'Not checked in yet';
+        : p.status === 'not_attending' ? '<span class="st-bad">Registered as not attending</span>'
+        : p.status === 'unregistered' ? '<span class="st-bad">Didn\'t register</span>'
+        : p.status === 'walked_in' ? '<span class="st-warn">Walk-in, recorded ' + esc(p.checkedInAt) + '</span>' : 'Not checked in yet';
       return '<li><div><div class="n">' + esc(p.name) + '<span class="tag">' + esc(p.kind) + '</span></div>' +
         '<div class="s">' + esc([p.ref, p.lobOrCompany].filter(Boolean).join(', ')) + '</div><div class="s">' + st + '</div></div>' +
-        (p.status === 'available' ? '<button class="btn" data-ref="' + esc(p.ref) + '">Check in</button>' : '') + '</li>';
+        (p.status === 'available' ? '<button class="btn" data-ref="' + esc(p.ref) + '">Check in</button>'
+          : (p.status === 'unregistered' || p.status === 'not_attending') && p.email ? '<button class="btn walk" data-walk="' + esc(p.email) + '">Record walk-in</button>' : '') + '</li>';
     }).join('');
   } catch (e) {
     if (seq === sSeq) ul.innerHTML = '<li class="st-bad">' + esc(e.message) + ' <button class="undo" id="sRetry">Try again</button></li>';
     const b = $('#sRetry'); if (b) b.addEventListener('click', runSearch);
   }
 }
-$('#results').addEventListener('click', e => { const b = e.target.closest('button[data-ref]'); if (b) doCheckin(b.dataset.ref); });
+$('#results').addEventListener('click', e => {
+  const b = e.target.closest('button[data-ref]');
+  if (b) return doCheckin(b.dataset.ref);
+  const w = e.target.closest('button[data-walk]');
+  if (w && confirm('Record as a walk-in? They won\'t be included in meals, merch or the raffle.')) doWalkin({ email: w.dataset.walk });
+});
 
 /* ---------- recent + undo ---------- */
 function recent() { try { return JSON.parse(store.get('recent') || '[]'); } catch (e) { return []; } }
 function addRecent(r) {
-  const list = recent().filter(x => x.ref !== r.ref);
-  list.unshift({ ref: r.ref, name: r.name, kind: r.kind, at: r.checkedInAt, t: Date.now() });
+  const list = recent().filter(x => r.walkinId ? x.walkinId !== r.walkinId : x.ref !== r.ref);
+  list.unshift({ ref: r.ref || '', walkinId: r.walkinId || '', name: r.name, kind: r.kind, at: r.checkedInAt, t: Date.now() });
   store.set('recent', JSON.stringify(list.slice(0, 15)));
   renderRecent();
 }
@@ -398,20 +450,22 @@ function renderRecent() {
   if (!list.length) { ul.innerHTML = '<li class="muted">None yet.</li>'; return; }
   ul.innerHTML = list.map(x => {
     const left = 120 - Math.floor((Date.now() - x.t) / 1000);
-    return '<li><div><div class="n">' + esc(x.name) + (x.kind === 'Guest' ? '<span class="tag">Guest</span>' : '') + '</div><div class="s">' + esc(x.ref + ', ' + x.at) + '</div></div>' +
-      '<button class="undo" data-undo="' + esc(x.ref) + '"' + (left > 0 ? '' : ' disabled') + '>' + (left > 0 ? 'Undo (' + left + 's)' : 'Done') + '</button></li>';
+    const key = x.walkinId ? 'w:' + x.walkinId : x.ref;
+    return '<li><div><div class="n">' + esc(x.name) + (x.kind === 'Guest' || x.kind === 'Walk-in' ? '<span class="tag">' + esc(x.kind) + '</span>' : '') + '</div><div class="s">' + esc([x.ref, x.at].filter(Boolean).join(', ')) + '</div></div>' +
+      '<button class="undo" data-undo="' + esc(key) + '"' + (left > 0 ? '' : ' disabled') + '>' + (left > 0 ? 'Undo (' + left + 's)' : 'Done') + '</button></li>';
   }).join('');
 }
 setInterval(() => { if (!$('#v-checkin').hidden) renderRecent(); }, 1000);
 $('#recent').addEventListener('click', async e => {
   const b = e.target.closest('button[data-undo]');
   if (!b || b.disabled) return;
-  if (!confirm('Undo the check-in for ' + b.dataset.undo + '?')) return;
+  const isWalk = b.dataset.undo.indexOf('w:') === 0, key = isWalk ? b.dataset.undo.slice(2) : b.dataset.undo;
+  if (!confirm(isWalk ? 'Remove this walk-in record?' : 'Undo the check-in for ' + key + '?')) return;
   b.disabled = true; b.textContent = 'Undoing…';
   try {
-    const r = await api('undo', { ref: b.dataset.undo });
+    const r = isWalk ? await api('undoWalkin', { id: key }) : await api('undo', { ref: key });
     if (!r.ok) { alert(r.msg); renderRecent(); return; }
-    store.set('recent', JSON.stringify(recent().filter(x => x.ref !== b.dataset.undo)));
+    store.set('recent', JSON.stringify(recent().filter(x => isWalk ? x.walkinId !== key : x.ref !== key)));
     renderRecent(); refreshStats(); showResult(null);
     if ($('#q').value.trim()) runSearch();
   } catch (err) { alert(err.message); renderRecent(); }
@@ -443,6 +497,7 @@ async function startCam() {
     const id = $('#camSel').value;
     await qr.start(id ? { deviceId: { exact: id } } : { facingMode: 'environment' }, { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; } }, onScan);
     camOn = true; $('#camBtn').textContent = 'Stop camera';
+    pingDisplay('camera');
     if (!$('#camSel').value) initCams();
   } catch (e) {
     $('#camMsg').textContent = 'Camera didn\'t start: ' + (e.message || e) + '. Use the search box instead.'; $('#camMsg').hidden = false;
@@ -451,13 +506,15 @@ async function startCam() {
 async function stopCam() {
   if (qr && camOn) { try { await qr.stop(); } catch (e) {} }
   camOn = false; $('#camBtn').textContent = 'Start camera';
+  pingDisplay('camera');
 }
 async function onScan(text) {
   const code = String(text || '').trim().toUpperCase();
   if (!code || busy) return;
   if (code === lastCode && Date.now() - lastAt < 5000) return;
   lastCode = code; lastAt = Date.now();
-  try { qr.pause(true); } catch (e) {}
+  pingDisplay('scanned');
+  try { qr.pause(false); } catch (e) {}
   await doCheckin(code);
   setTimeout(() => { if (camOn) { try { qr.resume(); } catch (e) {} } }, 3000);
 }
