@@ -120,6 +120,12 @@ function greet(m) {
     N.textContent = firstName(m.name) + '!';
     M.textContent = 'You\'re already checked in.';
     frame('ok', 'Already checked in');
+  } else if (m.outcome === 'released') {
+    E.textContent = 'Congratulations,';
+    N.textContent = firstName(m.name) + '!';
+    M.textContent = 'Enjoy your ' + (m.prize || 'prize') + '.';
+    frame('ok', 'Prize released');
+    hold = 8000;
   } else if (m.outcome === 'walk_in' || m.outcome === 'walked_in') {
     E.textContent = 'Welcome,';
     N.textContent = firstName(m.name) + '.';

@@ -95,6 +95,19 @@
   .undo { min-height: 48px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; flex: none; }
   .undo:disabled { color: var(--muted); background: transparent; border-color: transparent; }
   h3.sec { font-size: 17px; margin: 22px 0 4px; }
+  .modebar { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: #fff; margin-bottom: 16px; }
+  .modebar button { border: 0; background: transparent; padding: 10px 22px; min-height: 48px; font-weight: 500; color: var(--ink); }
+  .modebar button[aria-pressed=true] { background: var(--ink); color: #F3E9D2; font-weight: 700; }
+  body.claims main { box-shadow: inset 0 4px 0 var(--gold); }
+  .claimcard { border: 2px solid var(--gold); border-radius: 14px; background: #fff; padding: 18px; margin-bottom: 18px; }
+  .claimcard .who { font-family: var(--display); font-weight: 600; font-size: 30px; line-height: 1.1; }
+  .claimcard .idline { font-size: 18px; margin: 4px 0 10px; }
+  .claimcard .verify { font-size: 15px; background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-weight: 700; margin-bottom: 8px; }
+  .prizeitem { display: flex; gap: 12px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding: 12px 0; min-height: 64px; flex-wrap: wrap; }
+  .prizeitem .pl { font-weight: 700; font-size: 18px; }
+  .prizeitem .rel { color: var(--ok); font-weight: 700; font-size: 15px; }
+  .proxy { margin-top: 6px; }
+  .proxy input { font-size: 16px; min-height: 44px; }
   .walkform { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   .walkform summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; color: var(--ink); }
   .btn.walk { background: #fff; border: 1px solid #B7791F; color: var(--warn); }
@@ -124,10 +137,11 @@
       <span><b id="cA">0</b> of <span id="cAT">0</span> attendees</span>
       <span><b id="cG">0</b> guests</span>
       <span><b id="cW">0</b> walk-ins</span>
+      <span><b id="cP">0</b> of <span id="cPT">0</span> prizes released</span>
     </div>
     <nav class="tabs" id="tabs" hidden>
-      <button type="button" data-view="checkin" aria-current="page">Check-in</button>
-      <button type="button" data-view="prizes">Prizes</button>
+      <button type="button" data-view="checkin" aria-current="page">Booth</button>
+      <button type="button" data-view="prizes">Prize list</button>
     </nav>
     <button class="hbtn" id="lockBtn" hidden>Lock booth</button>
   </div>
@@ -150,6 +164,10 @@
 
   <!-- Check-in -->
   <section id="v-checkin" hidden>
+    <div class="modebar" role="group" aria-label="What are you doing?">
+      <button type="button" data-mode="checkin" aria-pressed="true">Check-in</button>
+      <button type="button" data-mode="claims" aria-pressed="false">Prize claims</button>
+    </div>
     <div class="grid">
       <div class="card">
         <h2>Scan a ticket</h2>
@@ -164,7 +182,7 @@
       <div>
         <div id="result" aria-live="assertive"></div>
         <div class="card">
-          <h2>Find someone</h2>
+          <h2 id="findTitle">Find someone</h2>
           <div class="searchrow">
             <input id="q" type="search" placeholder="Registration number, email or name" autocomplete="off" aria-label="Search">
           </div>
@@ -177,7 +195,7 @@
             <input id="wNote" type="text" maxlength="120" autocomplete="off">
             <button class="btn" id="wBtn" style="margin-top:12px">Record walk-in</button>
           </details>
-          <h3 class="sec">Recent check-ins on this device</h3>
+          <h3 class="sec" id="recentTitle">Recent check-ins on this device</h3>
           <ul class="list" id="recent"><li class="muted">None yet.</li></ul>
         </div>
       </div>
@@ -306,6 +324,7 @@ async function refreshStats() {
     $('#cA').textContent = s.attendeesCheckedIn; $('#cAT').textContent = s.attendeesExpected;
     $('#cG').textContent = s.guestsCheckedIn;
     $('#cW').textContent = s.walkIns || 0;
+    if (s.prizes) { $('#cP').textContent = s.prizes.released; $('#cPT').textContent = s.prizes.total; }
   } catch (e) {}
 }
 
@@ -313,6 +332,7 @@ function startBooth() {
   $('#boothLabel').textContent = store.get('booth') || 'Check-in booth';
   view('checkin');
   refreshStats(); clearInterval(statsTimer); statsTimer = setInterval(refreshStats, 30000);
+  if (store.get('mode') === 'claims') setMode('claims');
   renderRecent(); initCams();
 }
 
@@ -342,6 +362,7 @@ function showResult(r, retryValue) {
     unregistered: ['bad', '✕', 'Didn\'t register'],
     walk_in: ['warn', '!', 'Walk-in recorded'],
     walked_in: ['warn', '!', 'Already recorded as a walk-in'],
+    no_prize: ['warn', '!', 'No prizes found'],
     not_found: ['bad', '?', 'Not found'],
     error: ['bad', '!', 'Couldn\'t reach the sheet']
   };
@@ -349,6 +370,7 @@ function showResult(r, retryValue) {
   let meta = '';
   if (r.outcome === 'already') meta = 'At ' + esc(r.checkedInAt) + ' by ' + esc(r.checkedInBy) + '.';
   if (r.outcome === 'not_attending' || r.outcome === 'unregistered') meta = 'They can come in as a walk-in: no meals, merch or raffle.';
+  if (r.outcome === 'no_prize') meta = 'This code has no prizes waiting.' + (r.code ? ' Scanned: ' + esc(r.code) : '');
   if (r.outcome === 'walk_in') meta = 'Let them in. Not included in meals, merch or the raffle.';
   if (r.outcome === 'walked_in') meta = 'Recorded at ' + esc(r.checkedInAt) + ' by ' + esc(r.checkedInBy) + '. Not included in meals, merch or the raffle.';
   if (r.outcome === 'not_found') meta = 'Try their email or name.' + (r.code ? ' Scanned: ' + esc(r.code) : '');
@@ -364,7 +386,7 @@ function showResult(r, retryValue) {
   if (retryValue) $('#retryBtn').addEventListener('click', () => doCheckin(retryValue));
   if ($('#walkBtn')) $('#walkBtn').addEventListener('click', () => doWalkin({ email: r.email }));
   beep(k[0]);
-  if (r.outcome !== 'error') sendToDisplay(r);
+  if (r.outcome !== 'error' && mode === 'checkin') sendToDisplay(r);
 }
 
 /* ---------- check-in ---------- */
@@ -402,6 +424,65 @@ $('#wBtn').addEventListener('click', () => {
   doWalkin({ name: name, note: $('#wNote').value.trim() }).then(() => { $('#wName').value = ''; $('#wNote').value = ''; $('#walkForm').open = false; });
 });
 
+/* ---------- mode: check-in or prize claims ---------- */
+let mode = 'checkin';
+$$('.modebar button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+function setMode(m) {
+  mode = m;
+  $$('.modebar button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m ? 'true' : 'false'));
+  document.body.classList.toggle('claims', m === 'claims');
+  $('#findTitle').textContent = m === 'claims' ? 'Find a winner' : 'Find someone';
+  $('#q').placeholder = m === 'claims' ? 'Registration number, email or winner\'s name' : 'Registration number, email or name';
+  $('#walkForm').hidden = m === 'claims';
+  $('#recentTitle').textContent = m === 'claims' ? 'Recent releases on this device' : 'Recent check-ins on this device';
+  $('#q').value = ''; $('#results').innerHTML = ''; showResult(null); renderRecent();
+  store.set('mode', m);
+}
+
+/* ---------- prize claims ---------- */
+let claimPerson = null;
+async function doClaimLookup(code) {
+  if (busy) return; busy = true;
+  try {
+    const r = await api('claimLookup', { q: code });
+    if (!r.ok) { showResult({ outcome: 'error', msg: r.msg }, code); return; }
+    if (!r.results.length) { showResult({ outcome: 'no_prize', code: code }); return; }
+    showClaim(r.results[0]);
+    beep(r.results[0].prizes.some(p => !p.releasedAt) ? 'ok' : 'warn');
+  } catch (e) {
+    showResult({ outcome: 'error', msg: e.message }, code);
+  } finally { busy = false; }
+}
+function showClaim(p) {
+  claimPerson = p;
+  const waiting = p.prizes.filter(x => !x.releasedAt).length;
+  $('#result').innerHTML = '<div class="claimcard">' +
+    '<div class="who">' + esc(p.name) + (p.kind === 'Guest' ? ' <span class="tag">Guest</span>' : '') + '</div>' +
+    '<div class="idline">' + esc([p.ref, p.lobOrCompany].filter(Boolean).join(', ')) + '</div>' +
+    '<div class="verify">Check their company ID before releasing.</div>' +
+    (p.prizes.length ? '' : '<p class="muted">No prizes to claim.</p>') +
+    p.prizes.map(x => '<div class="prizeitem"><div><div class="pl">' + esc(x.label) + '</div>' +
+      (x.releasedAt ? '<div class="rel">Released ' + esc(x.releasedAt) + ' by ' + esc(x.releasedBy) + (x.note ? ', ' + esc(x.note) : '') + '</div>' : '<div class="muted">Waiting to be claimed</div>') + '</div>' +
+      (x.releasedAt ? '' : '<button class="btn" data-release="' + esc(x.id) + '">Release</button>') + '</div>').join('') +
+    (waiting ? '<details class="proxy"><summary class="muted">Someone else picking it up?</summary><input id="proxyName" type="text" maxlength="120" placeholder="Their name and relationship"></details>' : '') +
+    '</div>';
+}
+$('#result').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-release]');
+  if (!b || !claimPerson) return;
+  const item = claimPerson.prizes.find(x => x.id === b.dataset.release);
+  const proxy = $('#proxyName') ? $('#proxyName').value.trim() : '';
+  if (!confirm('Release "' + item.label + '" to ' + claimPerson.name + (proxy ? ' (picked up by ' + proxy + ')' : '') + '?')) return;
+  b.disabled = true; b.textContent = 'Releasing…';
+  try {
+    const r = await api('release', { itemId: item.id, ref: claimPerson.ref, note: proxy });
+    if (!r.ok) { alert(r.msg); b.disabled = false; b.textContent = 'Release'; return; }
+    showClaim(r.person); beep('ok'); refreshStats();
+    addRecent({ releaseId: r.released.id, name: claimPerson.name, kind: 'Prize', ref: r.released.label, checkedInAt: r.released.at });
+    if (displayChannel) displayChannel.postMessage({ type: 'result', outcome: 'released', name: claimPerson.name, prize: r.released.prize || item.label, t: Date.now() });
+  } catch (err) { alert(err.message); b.disabled = false; b.textContent = 'Release'; }
+});
+
 /* ---------- search ---------- */
 let sTimer, sSeq = 0;
 $('#q').addEventListener('input', () => { clearTimeout(sTimer); sTimer = setTimeout(runSearch, 350); });
@@ -410,6 +491,20 @@ async function runSearch() {
   const q = $('#q').value.trim(), seq = ++sSeq, ul = $('#results');
   if (q.length < 2) { ul.innerHTML = ''; return; }
   ul.innerHTML = '<li class="muted">Searching…</li>';
+  if (mode === 'claims') {
+    try {
+      const r = await api('claimLookup', { q: q });
+      if (seq !== sSeq) return;
+      if (!r.ok) { ul.innerHTML = '<li class="st-bad">' + esc(r.msg) + '</li>'; return; }
+      if (!r.results.length) { ul.innerHTML = '<li class="muted">No winner matches "' + esc(q) + '".</li>'; return; }
+      if (r.exact && r.results.length === 1) { ul.innerHTML = ''; showClaim(r.results[0]); return; }
+      window._claimResults = r.results;
+      ul.innerHTML = r.results.map((p, i) => '<li><div><div class="n">' + esc(p.name) + '</div><div class="s">' + esc([p.ref, p.lobOrCompany].filter(Boolean).join(', ')) + '</div>' +
+        '<div class="s">' + p.prizes.length + (p.prizes.length === 1 ? ' prize, ' : ' prizes, ') + p.prizes.filter(x => !x.releasedAt).length + ' waiting</div></div>' +
+        '<button class="btn" data-claim="' + i + '">Open</button></li>').join('');
+    } catch (e) { if (seq === sSeq) ul.innerHTML = '<li class="st-bad">' + esc(e.message) + '</li>'; }
+    return;
+  }
   try {
     const r = await api('search', { q: q });
     if (seq !== sSeq) return;
@@ -431,6 +526,8 @@ async function runSearch() {
   }
 }
 $('#results').addEventListener('click', e => {
+  const c = e.target.closest('button[data-claim]');
+  if (c) { showClaim(window._claimResults[Number(c.dataset.claim)]); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
   const b = e.target.closest('button[data-ref]');
   if (b) return doCheckin(b.dataset.ref);
   const w = e.target.closest('button[data-walk]');
@@ -438,19 +535,21 @@ $('#results').addEventListener('click', e => {
 });
 
 /* ---------- recent + undo ---------- */
-function recent() { try { return JSON.parse(store.get('recent') || '[]'); } catch (e) { return []; } }
+function recentKey() { return mode === 'claims' ? 'recentClaims' : 'recent'; }
+function recent() { try { return JSON.parse(store.get(recentKey()) || '[]'); } catch (e) { return []; } }
 function addRecent(r) {
-  const list = recent().filter(x => r.walkinId ? x.walkinId !== r.walkinId : x.ref !== r.ref);
-  list.unshift({ ref: r.ref || '', walkinId: r.walkinId || '', name: r.name, kind: r.kind, at: r.checkedInAt, t: Date.now() });
-  store.set('recent', JSON.stringify(list.slice(0, 15)));
+  const list = recent().filter(x => r.releaseId ? x.releaseId !== r.releaseId : r.walkinId ? x.walkinId !== r.walkinId : x.ref !== r.ref);
+  list.unshift({ ref: r.ref || '', walkinId: r.walkinId || '', releaseId: r.releaseId || '', name: r.name, kind: r.kind, at: r.checkedInAt, t: Date.now() });
+  store.set(recentKey(), JSON.stringify(list.slice(0, 15)));
   renderRecent();
 }
 function renderRecent() {
   const list = recent(), ul = $('#recent');
   if (!list.length) { ul.innerHTML = '<li class="muted">None yet.</li>'; return; }
+  if (mode === 'claims') list.forEach(x => { x.kind = ''; });
   ul.innerHTML = list.map(x => {
     const left = 120 - Math.floor((Date.now() - x.t) / 1000);
-    const key = x.walkinId ? 'w:' + x.walkinId : x.ref;
+    const key = x.releaseId ? 'r:' + x.releaseId : x.walkinId ? 'w:' + x.walkinId : x.ref;
     return '<li><div><div class="n">' + esc(x.name) + (x.kind === 'Guest' || x.kind === 'Walk-in' ? '<span class="tag">' + esc(x.kind) + '</span>' : '') + '</div><div class="s">' + esc([x.ref, x.at].filter(Boolean).join(', ')) + '</div></div>' +
       '<button class="undo" data-undo="' + esc(key) + '"' + (left > 0 ? '' : ' disabled') + '>' + (left > 0 ? 'Undo (' + left + 's)' : 'Done') + '</button></li>';
   }).join('');
@@ -459,13 +558,15 @@ setInterval(() => { if (!$('#v-checkin').hidden) renderRecent(); }, 1000);
 $('#recent').addEventListener('click', async e => {
   const b = e.target.closest('button[data-undo]');
   if (!b || b.disabled) return;
-  const isWalk = b.dataset.undo.indexOf('w:') === 0, key = isWalk ? b.dataset.undo.slice(2) : b.dataset.undo;
-  if (!confirm(isWalk ? 'Remove this walk-in record?' : 'Undo the check-in for ' + key + '?')) return;
+  const isWalk = b.dataset.undo.indexOf('w:') === 0, isRel = b.dataset.undo.indexOf('r:') === 0;
+  const key = (isWalk || isRel) ? b.dataset.undo.slice(2) : b.dataset.undo;
+  if (!confirm(isRel ? 'Undo this prize release?' : isWalk ? 'Remove this walk-in record?' : 'Undo the check-in for ' + key + '?')) return;
   b.disabled = true; b.textContent = 'Undoing…';
   try {
-    const r = isWalk ? await api('undoWalkin', { id: key }) : await api('undo', { ref: key });
+    const r = isRel ? await api('unrelease', { itemId: key }) : isWalk ? await api('undoWalkin', { id: key }) : await api('undo', { ref: key });
     if (!r.ok) { alert(r.msg); renderRecent(); return; }
-    store.set('recent', JSON.stringify(recent().filter(x => isWalk ? x.walkinId !== key : x.ref !== key)));
+    store.set(recentKey(), JSON.stringify(recent().filter(x => isRel ? x.releaseId !== key : isWalk ? x.walkinId !== key : x.ref !== key)));
+    if (isRel && claimPerson) doClaimLookup(claimPerson.ref);
     renderRecent(); refreshStats(); showResult(null);
     if ($('#q').value.trim()) runSearch();
   } catch (err) { alert(err.message); renderRecent(); }
@@ -515,7 +616,7 @@ async function onScan(text) {
   lastCode = code; lastAt = Date.now();
   pingDisplay('scanned');
   try { qr.pause(false); } catch (e) {}
-  await doCheckin(code);
+  if (mode === 'claims') await doClaimLookup(code); else await doCheckin(code);
   setTimeout(() => { if (camOn) { try { qr.resume(); } catch (e) {} } }, 3000);
 }
 
@@ -540,7 +641,8 @@ function drawPrizes() {
     return f.map(p => '<div class="prow"><div class="prize">' + esc(p.prize || 'Prize') + '</div>' +
       '<div><div class="n" style="font-weight:700;font-size:17px">' + esc(p.name || p.winner || 'No winner entered') + (p.kind === 'Guest' ? '<span class="tag">Guest</span>' : '') + '</div>' +
       '<div class="s muted" style="font-size:15px">' + esc([p.ref, p.lobOrCompany, p.note, p.checkedInAt ? 'Checked in ' + p.checkedInAt : ''].filter(Boolean).join(', ')) + '</div>' +
-      (p.reraffledTo ? '<div class="rr">Re-raffled to: ' + esc(p.reraffledTo) + '</div>' : '') + '</div>' +
+      (p.reraffledTo ? '<div class="rr">Re-raffled to: ' + esc(p.reraffledTo) + '</div>' : '') +
+      (p.releasedAt ? '<div class="rr" style="color:var(--ok)">Released ' + esc(p.releasedAt) + '</div>' : '') + '</div>' +
       '<div><span class="badge ' + label[p.status][0] + '">' + label[p.status][1] + '</span></div></div>').join('');
   };
   $('#pGrand').innerHTML = rows(prizeData.grand || []);
