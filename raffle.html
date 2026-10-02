@@ -38,16 +38,19 @@
   .kicker { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 500; color: var(--gold-soft); font-size: clamp(22px, 2.6vw, 40px); margin: 0; }
   .prize { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: clamp(36px, 5.2vw, 88px); line-height: 1.05; margin: 1vh 0 0; }
   .poolnote { color: var(--muted); font-size: clamp(16px, 1.4vw, 22px); margin-top: 1vh; }
-  .reel {
-    --h: clamp(80px, 11vw, 170px);
-    height: var(--h); overflow: hidden; margin: 5vh auto 0; width: min(92vw, 1300px); position: relative;
-    border-top: 2px solid var(--gold); border-bottom: 2px solid var(--gold);
-    -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
-            mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
-  }
-  .strip { will-change: transform; }
-  .strip div { height: var(--h); line-height: var(--h); font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: calc(var(--h) * .52); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
-  .winner-meta { font-size: clamp(20px, 2.2vw, 34px); color: var(--gold-soft); margin-top: 3vh; min-height: 1.6em; }
+  .drawgrid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4vw; align-items: center; width: min(94vw, 1700px); text-align: left; }
+  .wheelbox { position: relative; width: min(64vh, 46vw); aspect-ratio: 1; }
+  #wheel { width: 100%; height: 100%; display: block; overflow: visible; }
+  #wheel .spinner { transform-origin: 0 0; will-change: transform; }
+  #wheel text { font-family: 'Karla', 'Segoe UI', Arial, sans-serif; font-weight: 700; fill: #F3E9D2; }
+  #wheel .slice.win path { fill: #FF6B00 !important; }
+  #wheel .slice.win text { fill: #17320B; }
+  .pointer { position: absolute; top: -3.2%; left: 50%; width: 9%; transform: translateX(-50%); z-index: 2; filter: drop-shadow(0 3px 4px rgba(0,0,0,.45)); }
+  .winner { margin-top: 4vh; min-height: 22vh; }
+  .winner-label { font-family: 'Fraunces', Georgia, serif; font-style: italic; color: var(--gold-soft); font-size: clamp(20px, 2vw, 34px); min-height: 1.3em; }
+  .winner-name { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: clamp(44px, 5.4vw, 104px); line-height: 1.02; color: #fff; overflow-wrap: anywhere; }
+  @media (max-width: 900px) { .drawgrid { grid-template-columns: 1fr; justify-items: center; text-align: center; } .wheelbox { width: min(80vw, 46vh); } }
+  .winner-meta { font-size: clamp(20px, 2.2vw, 34px); color: var(--gold-soft); margin-top: 1.5vh; min-height: 1.6em; }
   .idle-title { font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: clamp(44px, 7vw, 120px); margin: 0; line-height: 1.02; }
   canvas#confetti { position: fixed; inset: 0; pointer-events: none; }
 
@@ -74,7 +77,7 @@
   .gate input { width: 100%; min-height: 50px; font-size: 18px; padding: 8px 12px; border: 1px solid #CBBFA6; border-radius: 10px; margin: 6px 0 12px; }
   .gate .btn { width: 100%; }
   .gate .msg { color: #A3301B; }
-  @media (prefers-reduced-motion: reduce) { .strip { transition-duration: .01s !important; } }
+
 </style>
 </head>
 <body>
@@ -96,12 +99,21 @@
       <h1 class="idle-title">Raffle time</h1>
       <p class="poolnote" id="idleNote"></p>
     </div>
-    <div id="drawView" hidden>
-      <p class="kicker" id="rouletteName"></p>
-      <h2 class="prize" id="prizeName"></h2>
-      <p class="poolnote" id="poolNote"></p>
-      <div class="reel" aria-live="polite"><div class="strip" id="strip"></div></div>
-      <div class="winner-meta" id="winnerMeta"></div>
+    <div id="drawView" class="drawgrid" hidden>
+      <div class="wheelbox">
+        <svg class="pointer" viewBox="0 0 60 70" aria-hidden="true"><path d="M30 68 L4 6 Q30 -6 56 6 Z" fill="#FF6B00" stroke="#F3E9D2" stroke-width="3"/></svg>
+        <svg id="wheel" viewBox="-520 -520 1040 1040" role="img" aria-label="Raffle wheel"></svg>
+      </div>
+      <div class="drawinfo">
+        <p class="kicker" id="rouletteName"></p>
+        <h2 class="prize" id="prizeName"></h2>
+        <p class="poolnote" id="poolNote"></p>
+        <div class="winner" id="winnerBox" aria-live="polite">
+          <div class="winner-label" id="winnerLabel"></div>
+          <div class="winner-name" id="winnerName"></div>
+          <div class="winner-meta" id="winnerMeta"></div>
+        </div>
+      </div>
     </div>
   </div>
 </main>
@@ -167,7 +179,7 @@ $('#pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlockBt
 /* ---------- size the textile header ---------- */
 function fitArt() {
   const drawing = !$('#drawView').hidden;
-  const s = Math.min(innerWidth * 0.62 / 911, innerHeight * (drawing ? 0.24 : 0.46) / 512);
+  const s = Math.min(innerWidth * 0.62 / 911, innerHeight * (drawing ? 0.17 : 0.46) / 512);
   $('#art').style.setProperty('--s', s.toFixed(4));
 }
 addEventListener('resize', fitArt);
@@ -222,32 +234,106 @@ async function draw() {
   spinning = false; syncControls();
 }
 
+// The wheel shows up to 24 names from the pool, always including the winner the server picked.
+const SLICE_COLORS = ['#2F4A12', '#4A5414', '#6B5A26'];
+let wheelTurn = 0;
+function shorten(n) { n = String(n || '').trim(); return n.length > 22 ? n.slice(0, 21) + '…' : n; }
+function buildWheel(names, winnerIdx) {
+  const n = names.length, step = 360 / n, R = 480;
+  const fs = Math.max(18, Math.min(46, 900 / Math.max(n, 8)));
+  const pt = deg => { const a = (deg - 90) * Math.PI / 180; return [Math.cos(a) * R, Math.sin(a) * R]; };
+  let slices = '';
+  names.forEach((name, i) => {
+    let color = SLICE_COLORS[i % 3];
+    if (n % 3 === 1 && i === n - 1) color = SLICE_COLORS[1];
+    const a0 = i * step - step / 2, a1 = i * step + step / 2;
+    const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+    const path = n === 1 ? '<circle r="' + R + '" fill="' + color + '"/>'
+      : '<path d="M0 0 L' + x0.toFixed(1) + ' ' + y0.toFixed(1) + ' A' + R + ' ' + R + ' 0 ' + (step > 180 ? 1 : 0) + ' 1 ' + x1.toFixed(1) + ' ' + y1.toFixed(1) + ' Z" fill="' + color + '" stroke="#17320B" stroke-width="3"/>';
+    const theta = i * step;
+    const flip = theta > 90 && theta < 270;
+    const tr = 'rotate(' + (theta - 90).toFixed(2) + ') translate(' + (R * 0.58).toFixed(0) + ' 0)' + (flip ? ' rotate(180)' : '');
+    slices += '<g class="slice' + (i === winnerIdx ? ' winslice' : '') + '">' + path +
+      '<text transform="' + tr + '" text-anchor="middle" dominant-baseline="central" font-size="' + fs.toFixed(0) + '">' + esc(shorten(name)) + '</text></g>';
+  });
+  let pegs = '';
+  for (let i = 0; i < n; i++) { const [x, y] = pt(i * step - step / 2); pegs += '<circle cx="' + (x * 1.02).toFixed(1) + '" cy="' + (y * 1.02).toFixed(1) + '" r="9" fill="#D4B477"/>'; }
+  $('#wheel').innerHTML =
+    '<circle r="505" fill="#0F2207" stroke="#A9813F" stroke-width="14"/>' +
+    '<g class="spinner" id="spinner" style="transform: rotate(' + wheelTurn + 'deg)">' + slices + pegs + '</g>' +
+    '<circle r="92" fill="#17320B" stroke="#A9813F" stroke-width="8"/>' +
+    '<text text-anchor="middle" dominant-baseline="central" y="-14" font-size="34" style="font-family:Fraunces,Georgia,serif;fill:#D4B477;font-weight:600">YEP</text>' +
+    '<text text-anchor="middle" dominant-baseline="central" y="24" font-size="30" style="fill:#F3E9D2">2026</text>';
+  return step;
+}
+
 function spin(r) {
   $('#idleView').hidden = true; $('#drawView').hidden = false; fitArt();
   $('#rouletteName').textContent = NAMES[r.roulette];
   $('#prizeName').textContent = r.prize;
-  $('#poolNote').textContent = 'Drawing from ' + r.poolSize + (r.poolSize === 1 ? ' person' : ' people');
-  $('#winnerMeta').textContent = '';
-  const strip = $('#strip');
-  let names = r.names.length ? r.names.slice() : [r.winner.name];
-  while (names.length < 40) names = names.concat(r.names.length ? r.names : [r.winner.name]);
-  names = names.slice(0, 44).filter(n => n !== r.winner.name).concat([r.winner.name]);
-  strip.innerHTML = names.map(n => '<div>' + esc(n) + '</div>').join('');
-  strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
-  void strip.offsetHeight;
-  const h = strip.firstElementChild.getBoundingClientRect().height;
+  $('#poolNote').textContent = 'Drawing from ' + r.poolSize + (r.poolSize === 1 ? ' person' : ' people') + (r.poolSize > 24 ? '. The wheel shows 24 of them.' : '');
+  $('#winnerLabel').textContent = ''; $('#winnerName').textContent = ''; $('#winnerMeta').textContent = '';
+
+  // Up to 23 other names + the winner, in random order
+  const others = [];
+  (r.names || []).forEach(n => { if (n !== r.winner.name && others.indexOf(n) === -1) others.push(n); });
+  const names = others.sort(() => Math.random() - 0.5).slice(0, 23);
+  const winnerIdx = Math.floor(Math.random() * (names.length + 1));
+  names.splice(winnerIdx, 0, r.winner.name);
+  const step = buildWheel(names, winnerIdx);
+
+  // Land the winner's slice under the pointer at the top, a little off-center so it looks natural
+  const jitter = (Math.random() - 0.5) * step * 0.6;
+  const current = ((wheelTurn % 360) + 360) % 360;
+  const target = (360 - (winnerIdx * step + jitter)) % 360;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  wheelTurn = wheelTurn - current + 360 * (reduce ? 1 : 7) + target;
+  const sp = $('#spinner');
+  void sp.getBoundingClientRect();
   return new Promise(done => {
     requestAnimationFrame(() => {
-      strip.style.transition = 'transform 6s cubic-bezier(.12,.72,.12,1)';
-      strip.style.transform = 'translateY(' + (-(names.length - 1) * h) + 'px)';
+      sp.style.transition = 'transform ' + (reduce ? 0.3 : 8) + 's cubic-bezier(.12,.67,.1,1)';
+      sp.style.transform = 'rotate(' + wheelTurn + 'deg)';
+      tickLoop(sp, step, reduce ? 0 : 8000);
     });
     const finish = () => {
+      document.querySelector('#wheel .winslice').classList.add('win');
+      $('#winnerLabel').textContent = 'And the winner is';
+      $('#winnerName').textContent = r.winner.name;
       $('#winnerMeta').textContent = [r.winner.ref, r.winner.lob].filter(Boolean).join(', ');
       chime(); confetti(); done();
     };
-    strip.addEventListener('transitionend', finish, { once: true });
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) setTimeout(finish, 50);
+    sp.addEventListener('transitionend', finish, { once: true });
   });
+}
+
+// Soft tick each time a peg passes the pointer
+function tickLoop(el, step, ms) {
+  if (!ms) return;
+  const t0 = performance.now(); let last = null;
+  (function frame(now) {
+    const m = getComputedStyle(el).transform;
+    if (m && m !== 'none') {
+      const v = m.match(/matrix\(([^)]+)\)/);
+      if (v) {
+        const p = v[1].split(',').map(Number);
+        const deg = (Math.atan2(p[1], p[0]) * 180 / Math.PI + 360) % 360;
+        const slot = Math.floor((deg + step / 2) / step);
+        if (last !== null && slot !== last) tick();
+        last = slot;
+      }
+    }
+    if (now - t0 < ms) requestAnimationFrame(frame);
+  })(t0);
+}
+function tick() {
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'triangle'; o.frequency.value = 1400;
+    g.gain.setValueAtTime(0.05, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.04);
+    o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.05);
+  } catch (e) {}
 }
 
 async function resolve(outcome) {
