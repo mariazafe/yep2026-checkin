@@ -74,7 +74,7 @@
   <div class="camwrap" id="camwrap">
     <video id="cam" autoplay muted playsinline></video>
     <div class="guide"><i></i></div>
-    <div class="smile" id="smile"><small>Smile for your check-in photo!</small><span id="smileN"></span></div>
+    <div class="smile" id="smile"><small id="smileLabel">Smile for your check-in photo!</small><span id="smileN"></span></div>
     <div class="flash" id="flash"></div>
     <div class="camlabel" id="camlabel">Hold your QR code inside the box</div>
   </div>
@@ -179,6 +179,7 @@ if ('BroadcastChannel' in window) {
     else if (m.type === 'smile') {
       clearTimeout(timer);
       document.getElementById('smileN').textContent = m.n;
+      document.getElementById('smileLabel').textContent = m.label || 'Smile for your check-in photo!';
       document.getElementById('smile').classList.add('on');
     }
     else if (m.type === 'flash') {

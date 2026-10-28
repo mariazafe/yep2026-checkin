@@ -487,6 +487,7 @@ $('#result').addEventListener('click', async e => {
     showClaim(r.person); beep('ok'); refreshStats();
     addRecent({ releaseId: r.released.id, name: claimPerson.name, kind: 'Prize', ref: r.released.label, checkedInAt: r.released.at });
     if (displayChannel) displayChannel.postMessage({ type: 'result', outcome: 'released', name: claimPerson.name, prize: r.released.prize || item.label, t: Date.now() });
+    takePhoto({ itemId: r.released.id, ref: claimPerson.ref, name: claimPerson.name, label: 'Smile with your prize!' });
   } catch (err) { alert(err.message); b.disabled = false; b.textContent = 'Release'; }
 });
 
@@ -619,7 +620,7 @@ async function stopCam() {
 }
 async function onScan(text) {
   const code = String(text || '').trim().toUpperCase();
-  if (!code || busy) return;
+  if (!code || busy || photoBusy) return;
   if (code === lastCode && Date.now() - lastAt < 5000) return;
   lastCode = code; lastAt = Date.now();
   pingDisplay('scanned');
@@ -632,7 +633,7 @@ async function onScan(text) {
 }
 
 /* ---------- check-in photos ----------
-   After a successful check-in or walk-in, the TV counts down 3-2-1, then this
+   After a successful check-in, walk-in or prize release, the TV counts down 3-2-1, then this
    page grabs one frame from the same camera that reads the QR codes.
    Photos upload in the background; if the internet drops they wait here and retry. */
 const PHOTO_COUNT = 3;          // seconds of "Smile!" countdown
@@ -656,7 +657,7 @@ function grabFrame() {
   return c.toDataURL('image/jpeg', 0.82);
 }
 function photoLine(html) {
-  const box = document.querySelector('#result .result > div:last-child');
+  const box = document.querySelector('#result .result > div:last-child') || document.querySelector('#result .claimcard');
   if (!box) return;
   let el = box.querySelector('.photoline');
   if (!el) { el = document.createElement('div'); el.className = 'photoline'; box.appendChild(el); }
@@ -664,11 +665,11 @@ function photoLine(html) {
   return el;
 }
 async function takePhoto(who) {
-  if (!camOn || mode !== 'checkin' || photoBusy) return;
+  if (!camOn || photoBusy) return;
   photoBusy = true;
   try {
     for (let n = PHOTO_COUNT; n > 0; n--) {
-      if (displayChannel) displayChannel.postMessage({ type: 'smile', n: n, t: Date.now() });
+      if (displayChannel) displayChannel.postMessage({ type: 'smile', n: n, label: who.label || '', t: Date.now() });
       photoLine('<span class="count">' + n + '</span> Photo in ' + n + '…');
       await wait(1000);
     }
@@ -677,7 +678,7 @@ async function takePhoto(who) {
     if (!img) { photoLine('Photo skipped: the camera isn\'t showing a picture.'); return; }
     const el = photoLine('<img alt="Check-in photo of ' + esc(who.name || '') + '" src="' + img + '"> Photo taken. <button class="link" type="button">Retake</button>');
     if (el) el.querySelector('button').addEventListener('click', () => takePhoto(who));
-    photoQueue.push({ ref: who.ref || '', walkinId: who.walkinId || '', name: who.name || '', takenAt: new Date().toISOString(), image: img.split(',')[1] });
+    photoQueue.push({ ref: who.ref || '', walkinId: who.walkinId || '', itemId: who.itemId || '', name: who.name || '', takenAt: new Date().toISOString(), image: img.split(',')[1] });
     savePhotoQueue();
     uploadPhotos();
   } finally { photoBusy = false; }
@@ -692,7 +693,7 @@ async function uploadPhotos() {
       const r = await api('photo', p);
       if (!r.ok) {
         // A refusal from the sheet (not a network problem): keep going so one bad photo doesn't block the rest.
-        console.warn('Photo not saved for ' + (p.ref || p.walkinId) + ': ' + r.msg);
+        console.warn('Photo not saved for ' + (p.itemId || p.ref || p.walkinId) + ': ' + r.msg);
       }
       photoQueue.shift(); savePhotoQueue();
     }
