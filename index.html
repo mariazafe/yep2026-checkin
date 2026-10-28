@@ -71,6 +71,11 @@
   .camrow { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
   .camrow select { flex: 1; min-width: 160px; font-size: 16px; }
 
+  .photoline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .photoline img { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+  .photoline .count { font-family: var(--display); font-size: 26px; color: var(--ink); line-height: 1; }
+  .photoline .link { background: none; border: 0; padding: 0; color: var(--ink); text-decoration: underline; font-size: 14px; }
+  .photoq { font-size: 13px; color: var(--warn); margin: 6px 0 0; }
   .result { border-radius: 14px; padding: 20px; margin-bottom: 18px; border: 2px solid; display: flex; gap: 16px; align-items: flex-start; }
   .result .icon { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; font-weight: 700; color: #fff; }
   .result h3 { font-family: var(--display); font-weight: 600; font-size: 30px; line-height: 1.1; margin: 0 0 6px; }
@@ -181,6 +186,7 @@
       </div>
       <div>
         <div id="result" aria-live="assertive"></div>
+        <p class="photoq" id="photoQ" hidden></p>
         <div class="card">
           <h2 id="findTitle">Find someone</h2>
           <div class="searchrow">
@@ -398,7 +404,7 @@ async function doCheckin(code) {
     const r = await api('checkin', { code: code });
     if (!r.ok) { showResult({ outcome: 'error', msg: r.msg }, code); return; }
     showResult(r);
-    if (r.outcome === 'checked_in') { addRecent(r); refreshStats(); }
+    if (r.outcome === 'checked_in') { addRecent(r); refreshStats(); takePhoto({ ref: r.ref, name: r.name }); }
     if ($('#q').value.trim()) runSearch();
   } catch (e) {
     showResult({ outcome: 'error', msg: e.message }, code);
@@ -412,7 +418,7 @@ async function doWalkin(data) {
     const r = await api('walkin', data);
     if (!r.ok) { showResult({ outcome: 'error', msg: r.msg }); return; }
     showResult(r);
-    if (r.outcome === 'walk_in') { addRecent(Object.assign({ walkinId: r.walkinId, kind: 'Walk-in' }, r)); refreshStats(); }
+    if (r.outcome === 'walk_in') { addRecent(Object.assign({ walkinId: r.walkinId, kind: 'Walk-in' }, r)); refreshStats(); takePhoto({ walkinId: r.walkinId, name: r.name }); }
     if ($('#q').value.trim()) runSearch();
   } catch (e) {
     showResult({ outcome: 'error', msg: e.message });
@@ -619,8 +625,83 @@ async function onScan(text) {
   pingDisplay('scanned');
   try { qr.pause(false); } catch (e) {}
   if (mode === 'claims') await doClaimLookup(code); else await doCheckin(code);
-  setTimeout(() => { if (camOn) { try { qr.resume(); } catch (e) {} } }, 3000);
+  setTimeout(function resumeLater() {
+    if (photoBusy) return setTimeout(resumeLater, 400);
+    if (camOn) { try { qr.resume(); } catch (e) {} }
+  }, 3000);
 }
+
+/* ---------- check-in photos ----------
+   After a successful check-in or walk-in, the TV counts down 3-2-1, then this
+   page grabs one frame from the same camera that reads the QR codes.
+   Photos upload in the background; if the internet drops they wait here and retry. */
+const PHOTO_COUNT = 3;          // seconds of "Smile!" countdown
+const PHOTO_WIDTH = 960;        // saved photo width in pixels
+let photoBusy = false;
+const photoQueue = JSON.parse(store.get('photoQueue') || '[]');
+function savePhotoQueue() {
+  // Keep the newest 30 in this browser in case the page reloads with photos still waiting.
+  try { store.set('photoQueue', JSON.stringify(photoQueue.slice(-30))); } catch (e) {}
+  const n = photoQueue.length;
+  $('#photoQ').hidden = !n;
+  $('#photoQ').textContent = n ? n + (n === 1 ? ' photo is' : ' photos are') + ' waiting to upload. They\'ll send when the connection is back.' : '';
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+function grabFrame() {
+  const v = document.querySelector('#reader video');
+  if (!v || !v.videoWidth) return null;
+  const w = Math.min(PHOTO_WIDTH, v.videoWidth), h = Math.round(w * v.videoHeight / v.videoWidth);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(v, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+function photoLine(html) {
+  const box = document.querySelector('#result .result > div:last-child');
+  if (!box) return;
+  let el = box.querySelector('.photoline');
+  if (!el) { el = document.createElement('div'); el.className = 'photoline'; box.appendChild(el); }
+  el.innerHTML = html;
+  return el;
+}
+async function takePhoto(who) {
+  if (!camOn || mode !== 'checkin' || photoBusy) return;
+  photoBusy = true;
+  try {
+    for (let n = PHOTO_COUNT; n > 0; n--) {
+      if (displayChannel) displayChannel.postMessage({ type: 'smile', n: n, t: Date.now() });
+      photoLine('<span class="count">' + n + '</span> Photo in ' + n + '…');
+      await wait(1000);
+    }
+    if (displayChannel) displayChannel.postMessage({ type: 'flash', t: Date.now() });
+    const img = grabFrame();
+    if (!img) { photoLine('Photo skipped: the camera isn\'t showing a picture.'); return; }
+    const el = photoLine('<img alt="Check-in photo of ' + esc(who.name || '') + '" src="' + img + '"> Photo taken. <button class="link" type="button">Retake</button>');
+    if (el) el.querySelector('button').addEventListener('click', () => takePhoto(who));
+    photoQueue.push({ ref: who.ref || '', walkinId: who.walkinId || '', name: who.name || '', takenAt: new Date().toISOString(), image: img.split(',')[1] });
+    savePhotoQueue();
+    uploadPhotos();
+  } finally { photoBusy = false; }
+}
+let uploading = false;
+async function uploadPhotos() {
+  if (uploading || !photoQueue.length) return;
+  uploading = true;
+  try {
+    while (photoQueue.length) {
+      const p = photoQueue[0];
+      const r = await api('photo', p);
+      if (!r.ok) {
+        // A refusal from the sheet (not a network problem): keep going so one bad photo doesn't block the rest.
+        console.warn('Photo not saved for ' + (p.ref || p.walkinId) + ': ' + r.msg);
+      }
+      photoQueue.shift(); savePhotoQueue();
+    }
+  } catch (e) {
+    // Network problem: leave the queue as it is and try again shortly.
+  } finally { uploading = false; }
+}
+setInterval(uploadPhotos, 20000);
+savePhotoQueue();
 
 /* ---------- prizes ---------- */
 let prizeData = null;
